@@ -148,7 +148,12 @@ pub enum TemplateCommand {
     List,
 
     /// Install a template from its configured repository.
-    Install { name: String },
+    Install {
+        name: String,
+        /// Git repository URL. Overrides the global templates.repository setting.
+        #[arg(long)]
+        repository: Option<String>,
+    },
 
     /// Update one template, or all installed templates.
     Update {
@@ -251,6 +256,23 @@ mod tests {
         .expect("compile arguments should parse");
 
         assert!(matches!(cli.command, super::Command::Compile(_)));
+    }
+
+    #[test]
+    fn parses_template_install_with_repository_override() {
+        let cli = Cli::try_parse_from([
+            "latex_handler",
+            "template",
+            "install",
+            "university",
+            "--repository",
+            "https://example.invalid/university.git",
+        ])
+        .expect("template install arguments should parse");
+
+        assert!(matches!(cli.command, super::Command::Template {
+            command: super::TemplateCommand::Install { name, repository: Some(repository) }
+        } if name == "university" && repository == "https://example.invalid/university.git"));
     }
 
     #[test]

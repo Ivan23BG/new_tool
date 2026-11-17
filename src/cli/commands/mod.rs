@@ -3,7 +3,7 @@ use super::args::{
 };
 use crate::config::{ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{Project, ValidationSeverity, create_project, initialize_project};
-use crate::template::TemplateRegistry;
+use crate::template::{TemplateRegistry, install_template};
 use std::error::Error;
 
 /// Dispatch parsed commands. Individual command implementations will be added
@@ -226,7 +226,25 @@ fn execute_template(command: TemplateCommand) -> Result<(), Box<dyn Error + Send
                 );
             }
         }
-        TemplateCommand::Install { .. } => return not_implemented("template install"),
+        TemplateCommand::Install { name, repository } => {
+            let global = store.load_global()?;
+            let configured_repository = global.templates.and_then(|templates| templates.repository);
+            let repository = repository.or(configured_repository);
+            let installed = install_template(&registry, &name, repository.as_deref())?;
+            println!(
+                "Installed template '{}' ({})",
+                installed.manifest.name, installed.manifest.version
+            );
+            println!("Directory: {}", installed.directory.display());
+            println!(
+                "Repository: {}",
+                installed
+                    .manifest
+                    .repository
+                    .as_deref()
+                    .unwrap_or("(not recorded)")
+            );
+        }
         TemplateCommand::Update { .. } => return not_implemented("template update"),
         TemplateCommand::Remove { .. } => return not_implemented("template remove"),
         TemplateCommand::Versions { .. } => return not_implemented("template versions"),

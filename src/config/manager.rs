@@ -188,6 +188,7 @@ fn validate_key(key: &str) -> Result<(), ConfigError> {
         "output.keep_intermediates",
         "general.default_template",
         "general.check_template_updates",
+        "templates.repository",
         "templates.auto_update_latest",
         "templates.prerelease",
         "themes.enabled",

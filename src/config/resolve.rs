@@ -68,6 +68,7 @@ pub struct ResolvedGeneralConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedTemplateConfig {
+    pub repository: Option<String>,
     pub auto_update_latest: bool,
     pub prerelease: bool,
 }
@@ -152,6 +153,7 @@ impl ResolvedConfig {
                 check_template_updates: general.check_template_updates.unwrap_or(true),
             },
             templates: ResolvedTemplateConfig {
+                repository: templates.repository,
                 auto_update_latest: templates.auto_update_latest.unwrap_or(true),
                 prerelease: templates.prerelease.unwrap_or(false),
             },

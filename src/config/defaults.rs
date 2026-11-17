@@ -48,6 +48,7 @@ pub fn built_in_defaults() -> Config {
             check_template_updates: Some(true),
         }),
         templates: Some(TemplateConfig {
+            repository: None,
             auto_update_latest: Some(true),
             prerelease: Some(false),
         }),

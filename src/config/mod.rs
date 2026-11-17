@@ -87,7 +87,7 @@ impl Config {
         });
         section!(output, OutputConfig, { mirror_structure, keep_intermediates });
         section!(general, GeneralConfig, { default_template, check_template_updates });
-        section!(templates, TemplateConfig, { auto_update_latest, prerelease });
+        section!(templates, TemplateConfig, { repository, auto_update_latest, prerelease });
         section!(themes, ThemeConfig, { enabled, default });
     }
 
@@ -188,6 +188,8 @@ pub struct GeneralConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TemplateConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_update_latest: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

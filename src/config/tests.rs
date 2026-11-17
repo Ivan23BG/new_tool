@@ -43,3 +43,15 @@ fn invalid_enum_values_are_rejected() {
     let result = Config::from_toml("[compiler]\nengine = \"tectonic\"\n");
     assert!(result.is_err());
 }
+
+#[test]
+fn template_repository_is_a_partial_global_configuration_value() {
+    let config =
+        Config::from_toml("[templates]\nrepository = \"https://example.invalid/templates.git\"\n")
+            .expect("template repository should deserialize");
+
+    assert_eq!(
+        config.templates.unwrap().repository.as_deref(),
+        Some("https://example.invalid/templates.git")
+    );
+}

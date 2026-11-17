@@ -208,6 +208,10 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# latex_handler global configuration
 # max_workers = 8
 
 [templates]
+# Default Git repository used by `latex_handler template install`.
+# A command-line --repository value takes precedence.
+# repository = "https://github.com/Ivan23BG/latex_handler_template.git"
+
 # Automatically activate new stable releases for projects tracking `latest`.
 # Default: true
 # auto_update_latest = true
