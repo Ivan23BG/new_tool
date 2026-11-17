@@ -164,7 +164,12 @@ pub enum TemplateCommand {
     },
 
     /// Remove an installed template.
-    Remove { name: String },
+    Remove {
+        name: String,
+        /// Skip the interactive confirmation prompt.
+        #[arg(long)]
+        force: bool,
+    },
 
     /// Show installed and selected template versions.
     Status { name: Option<String> },

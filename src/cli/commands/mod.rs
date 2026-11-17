@@ -3,7 +3,9 @@ use super::args::{
 };
 use crate::config::{ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{Project, ValidationSeverity, create_project, initialize_project};
-use crate::template::{TemplateRegistry, install_template};
+use crate::template::{
+    TemplateRegistry, install_template, list_template_versions, remove_template,
+};
 use std::error::Error;
 
 /// Dispatch parsed commands. Individual command implementations will be added
@@ -246,8 +248,53 @@ fn execute_template(command: TemplateCommand) -> Result<(), Box<dyn Error + Send
             );
         }
         TemplateCommand::Update { .. } => return not_implemented("template update"),
-        TemplateCommand::Remove { .. } => return not_implemented("template remove"),
-        TemplateCommand::Versions { .. } => return not_implemented("template versions"),
+        TemplateCommand::Remove { name, force } => {
+            // Validate the name before prompting, so a missing template gives
+            // the useful registry error even in non-interactive environments.
+            registry.get(&name)?;
+            if !force && !confirm_template_removal(&name)? {
+                println!("Removal cancelled.");
+                return Ok(());
+            }
+            let removed = remove_template(&registry, &name)?;
+            println!(
+                "Removed template '{}' from {}",
+                removed.manifest.name,
+                removed.directory.display()
+            );
+            println!("Existing projects created from this template were not modified.");
+        }
+        TemplateCommand::Versions { name } => {
+            let versions = list_template_versions(&registry, &name)?;
+            if versions.is_empty() {
+                println!("No published Git tags found for '{name}'.");
+            } else {
+                println!("Published versions for '{name}':");
+                for version in versions {
+                    println!("  {version}");
+                }
+            }
+        }
     }
     Ok(())
+}
+
+fn confirm_template_removal(name: &str) -> Result<bool, Box<dyn Error + Send + Sync>> {
+    use std::io::{self, IsTerminal, Write};
+
+    if !io::stdin().is_terminal() {
+        return Err(io::Error::other(
+            "template removal requires confirmation; rerun with --force in non-interactive use",
+        )
+        .into());
+    }
+
+    print!("Remove installed template '{name}'? [y/N] ");
+    io::stdout().flush()?;
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    Ok(matches!(
+        answer.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
