@@ -53,3 +53,29 @@ provides a fully populated configuration for application components.
 The CLI is intentionally separated from the application logic. Project discovery,
 configuration, compilation, and template management are implemented as
 independent modules so they can be tested without invoking the command-line parser.
+
+## Project initialization
+
+`latex_handler init` initializes the current directory (or a supplied directory)
+without replacing existing source files. It creates the configured `src/`,
+`build/`, `pdfs/`, and `logs/` directories and adds `latex_handler.toml` only
+when it is missing. Existing project metadata and configuration overrides are
+preserved.
+
+```sh
+latex_handler init
+latex_handler init ./existing-thesis --template university
+```
+
+`latex_handler new <name>` creates a new directory from an installed template.
+Installed templates are currently expected under
+`<user-config-directory>/templates/<template-name>`; template downloading and
+version management are handled by the upcoming template-management stage.
+
+```sh
+latex_handler new thesis --template university
+latex_handler new thesis --template university --path ~/Documents
+```
+
+Creation refuses to use an existing destination directory. Template copying
+omits Git metadata and symbolic links.

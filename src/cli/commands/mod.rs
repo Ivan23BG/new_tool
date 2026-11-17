@@ -1,6 +1,6 @@
-use super::args::{Command, ConfigCommand, ConfigScopeArgs, ProjectCommand};
+use super::args::{Command, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand};
 use crate::config::{ConfigManager, ConfigScope, ConfigStore};
-use crate::project::{Project, ValidationSeverity};
+use crate::project::{Project, ValidationSeverity, create_project, initialize_project};
 use std::error::Error;
 
 /// Dispatch parsed commands. Individual command implementations will be added
@@ -8,8 +8,8 @@ use std::error::Error;
 /// logic in the argument definitions.
 pub fn execute(command: Command) -> Result<(), Box<dyn Error + Send + Sync>> {
     match command {
-        Command::New(_) => not_implemented("new"),
-        Command::Init(_) => not_implemented("init"),
+        Command::New(args) => execute_new(args),
+        Command::Init(args) => execute_init(args),
         Command::Compile(_) => not_implemented("compile"),
         Command::Project { command } => execute_project(command),
         Command::Template { .. } => not_implemented("template"),
@@ -149,5 +149,30 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
             }
         }
     }
+    Ok(())
+}
+
+fn execute_init(args: InitArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = ConfigStore::user_default()?;
+    let project = initialize_project(&args.path, &store, args.template.as_deref())?;
+    println!("Initialized project at {}", project.root().display());
+    println!("Configuration: {}", project.config_path().display());
+    Ok(())
+}
+
+fn execute_new(args: NewArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = ConfigStore::user_default()?;
+    let parent = args.path.unwrap_or(std::env::current_dir()?);
+    let project = create_project(&args.name, parent, args.template.as_deref(), &store)?;
+    println!("Created project at {}", project.root().display());
+    println!(
+        "Template: {}",
+        project
+            .config()
+            .project
+            .template
+            .as_deref()
+            .unwrap_or("(none)")
+    );
     Ok(())
 }

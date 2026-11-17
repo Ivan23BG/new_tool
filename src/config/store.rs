@@ -75,6 +75,11 @@ impl ConfigStore {
         &self.config_dir
     }
 
+    /// Directory containing installed templates (`<config_dir>/templates`).
+    pub fn templates_dir(&self) -> PathBuf {
+        self.config_dir.join("templates")
+    }
+
     pub fn global_config_path(&self) -> PathBuf {
         self.config_dir.join(GLOBAL_CONFIG_FILE)
     }
