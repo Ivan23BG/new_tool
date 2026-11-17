@@ -131,6 +131,45 @@ pub fn create_project(
     result
 }
 
+/// Set a project's template version policy. The value `latest` tracks the
+/// latest stable release; any other non-empty value pins an exact release.
+pub fn set_template_version(
+    path: impl AsRef<Path>,
+    version: &str,
+    store: &ConfigStore,
+) -> Result<Project, ProjectError> {
+    let version = version.trim();
+    if version.is_empty() || version.chars().any(char::is_whitespace) {
+        return Err(ProjectError::InvalidProjectConfig(
+            "template version must be a non-empty version or 'latest'".into(),
+        ));
+    }
+
+    let project = Project::discover(path, store)?;
+    if project.config().project.template.is_none() {
+        return Err(ProjectError::InvalidProjectConfig(
+            "this project is not associated with a template; initialize it with --template first"
+                .into(),
+        ));
+    }
+
+    let config_path = store.ensure_project(project.root())?;
+    let mut document = read_document(&config_path)?;
+    let project_table = document
+        .as_table_mut()
+        .entry("project")
+        .or_insert(toml_edit::table())
+        .as_table_mut()
+        .ok_or_else(|| ProjectError::InvalidProjectConfig("[project] must be a table".into()))?;
+    project_table.insert("template_version", value(version));
+    fs::write(&config_path, document.to_string()).map_err(|source| ProjectError::Path {
+        path: config_path,
+        source,
+    })?;
+
+    Project::load(project.root(), store)
+}
+
 fn copy_template(source: &Path, destination: &Path) -> Result<(), ProjectError> {
     for entry in WalkDir::new(source).min_depth(1).sort_by_file_name() {
         let entry = entry?;
@@ -297,6 +336,56 @@ mod tests {
         fs::create_dir(dir.path().join("thesis")).unwrap();
         let error = create_project("thesis", dir.path(), Some("missing"), &store).unwrap_err();
         assert!(matches!(error, ProjectError::AlreadyExists(_)));
+    }
+
+    #[test]
+    fn project_template_can_be_pinned_and_returned_to_latest_tracking() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config"));
+        let project_dir = dir.path().join("thesis");
+        fs::create_dir_all(project_dir.join("src")).unwrap();
+        fs::write(
+            project_dir.join("latex_handler.toml"),
+            "[project]\nname = 'Thesis'\ntemplate = 'university'\ntemplate_version = 'latest'\n\n[compiler]\nengine = 'lualatex'\n",
+        )
+        .unwrap();
+
+        let pinned = set_template_version(&project_dir, "1.2.0", &store).unwrap();
+        assert_eq!(
+            pinned.config().project.template_version.as_deref(),
+            Some("1.2.0")
+        );
+        let contents = fs::read_to_string(project_dir.join("latex_handler.toml")).unwrap();
+        assert!(contents.contains("engine = 'lualatex'"));
+
+        let tracking = set_template_version(&project_dir, "latest", &store).unwrap();
+        assert_eq!(
+            tracking.config().project.template_version.as_deref(),
+            Some("latest")
+        );
+    }
+
+    #[test]
+    fn template_version_policy_requires_an_associated_template() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config"));
+        fs::create_dir_all(dir.path().join("project/src")).unwrap();
+        assert!(set_template_version(dir.path().join("project"), "1.0.0", &store).is_err());
+    }
+
+    #[test]
+    fn rejects_empty_or_whitespace_template_versions() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config"));
+        let project_dir = dir.path().join("project");
+        fs::create_dir_all(project_dir.join("src")).unwrap();
+        fs::write(
+            project_dir.join("latex_handler.toml"),
+            "[project]\ntemplate = 'university'\n",
+        )
+        .unwrap();
+        assert!(set_template_version(&project_dir, "  ", &store).is_err());
+        assert!(set_template_version(&project_dir, "1.0.0 rc1", &store).is_err());
     }
 
     #[test]

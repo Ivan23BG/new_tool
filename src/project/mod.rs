@@ -8,7 +8,7 @@ mod validation;
 use crate::config::{ConfigStore, ResolvedConfig};
 use std::path::{Path, PathBuf};
 
-pub use creation::{create_project, initialize_project};
+pub use creation::{create_project, initialize_project, set_template_version};
 pub use discovery::{DiscoveredDocument, discover_documents};
 pub use error::ProjectError;
 pub use validation::{ProjectValidation, ValidationIssue, ValidationSeverity, validate_project};

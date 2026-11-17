@@ -100,3 +100,25 @@ Prerelease tags are excluded by default. Set `templates.prerelease = true` in
 the global configuration to include them when selecting the latest release.
 Updates are staged before replacing the installed template; local modifications
 are protected and cause the update to stop instead of being discarded.
+
+## Template version policies
+
+Projects created from a template record a template name and a version policy in
+`latex_handler.toml`. The default policy is `latest`; it can be changed without
+rewriting the project's copied files:
+
+```sh
+# Inspect the policy and the locally installed template version
+latex_handler project template status
+
+# Pin the project metadata to a specific release/tag
+latex_handler project template pin 1.2.0
+
+# Return to tracking the latest stable release
+latex_handler project template track
+```
+
+A project pin is metadata describing the template release associated with the
+project. Template files are copied when the project is created, so changing the
+policy or updating the globally installed template does not rewrite existing
+project files.

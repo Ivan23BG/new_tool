@@ -1,8 +1,11 @@
 use super::args::{
-    Command, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand, TemplateCommand,
+    Command, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand,
+    ProjectTemplateCommand, TemplateCommand,
 };
 use crate::config::{ConfigManager, ConfigScope, ConfigStore};
-use crate::project::{Project, ValidationSeverity, create_project, initialize_project};
+use crate::project::{
+    Project, ValidationSeverity, create_project, initialize_project, set_template_version,
+};
 use crate::template::{
     TemplateRegistry, install_template, list_template_versions, remove_template, update_template,
 };
@@ -120,6 +123,15 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
                     .as_deref()
                     .unwrap_or("(none)")
             );
+            println!(
+                "Template version policy: {}",
+                project
+                    .config()
+                    .project
+                    .template_version
+                    .as_deref()
+                    .unwrap_or("(unset)")
+            );
             let documents = project.documents()?;
             println!("Discovered documents: {}", documents.len());
             for document in documents {
@@ -153,8 +165,101 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
                 println!("{}", document.relative_path.display());
             }
         }
+        ProjectCommand::Template { command } => execute_project_template(command, &store)?,
     }
     Ok(())
+}
+
+fn execute_project_template(
+    command: ProjectTemplateCommand,
+    store: &ConfigStore,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    match command {
+        ProjectTemplateCommand::Status { path } => {
+            let project = Project::discover(path, store)?;
+            let template = project
+                .config()
+                .project
+                .template
+                .as_deref()
+                .ok_or_else(|| {
+                    std::io::Error::other("this project is not associated with a template")
+                })?;
+            let policy = project
+                .config()
+                .project
+                .template_version
+                .as_deref()
+                .unwrap_or("latest");
+            println!("Project: {}", project.root().display());
+            println!("Template: {template}");
+            if policy == "latest" {
+                println!("Version policy: tracking latest stable release");
+            } else {
+                println!("Version policy: pinned to {policy}");
+            }
+            let registry = TemplateRegistry::new(store.templates_dir());
+            match registry.get(template) {
+                Ok(installed) => {
+                    println!("Installed version: {}", installed.manifest.version);
+                    if policy != "latest"
+                        && normalize_version(policy)
+                            != normalize_version(&installed.manifest.version)
+                    {
+                        println!(
+                            "Note: the globally installed template differs from this project's pinned version."
+                        );
+                    }
+                }
+                Err(crate::template::TemplateRegistryError::NotInstalled(_)) => {
+                    println!("Installed version: (template not installed)");
+                }
+                Err(error) => return Err(error.into()),
+            }
+            println!("Project files are a snapshot; changing this policy does not rewrite them.");
+        }
+        ProjectTemplateCommand::Pin { version, path } => {
+            if version.trim() == "latest" {
+                return Err(
+                    std::io::Error::other("use `project template track` to follow latest").into(),
+                );
+            }
+            let project = set_template_version(path, &version, store)?;
+            println!(
+                "Pinned '{}' to template version {} (project files were not modified)",
+                project
+                    .config()
+                    .project
+                    .template
+                    .as_deref()
+                    .unwrap_or("(unknown)"),
+                version.trim()
+            );
+        }
+        ProjectTemplateCommand::Track { path } => {
+            let project = set_template_version(path, "latest", store)?;
+            println!(
+                "Project '{}' now tracks the latest stable release of '{}' (project files were not modified)",
+                project
+                    .config()
+                    .project
+                    .name
+                    .as_deref()
+                    .unwrap_or("(unnamed)"),
+                project
+                    .config()
+                    .project
+                    .template
+                    .as_deref()
+                    .unwrap_or("(unknown)")
+            );
+        }
+    }
+    Ok(())
+}
+
+fn normalize_version(version: &str) -> &str {
+    version.strip_prefix('v').unwrap_or(version)
 }
 
 fn execute_init(args: InitArgs) -> Result<(), Box<dyn Error + Send + Sync>> {

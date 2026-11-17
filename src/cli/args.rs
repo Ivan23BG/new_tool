@@ -140,6 +140,38 @@ pub enum ProjectCommand {
         #[arg(default_value = ".")]
         path: PathBuf,
     },
+
+    /// Inspect or change the template version policy for a project.
+    Template {
+        #[command(subcommand)]
+        command: ProjectTemplateCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProjectTemplateCommand {
+    /// Show the project's template and version policy.
+    Status {
+        /// Project directory. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+
+    /// Pin the project to an exact template version.
+    Pin {
+        /// Version or Git tag to pin (for example 1.2.0).
+        version: String,
+        /// Project directory. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+
+    /// Follow the latest stable template release instead of a fixed version.
+    Track {
+        /// Project directory. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -243,6 +275,7 @@ pub struct CleanArgs {
 mod tests {
     use super::Cli;
     use clap::Parser;
+    use std::path::PathBuf;
 
     #[test]
     fn parses_compile_with_file_theme_and_engine() {
@@ -261,6 +294,35 @@ mod tests {
         .expect("compile arguments should parse");
 
         assert!(matches!(cli.command, super::Command::Compile(_)));
+    }
+
+    #[test]
+    fn parses_project_template_pin_and_track_commands() {
+        let pin = Cli::try_parse_from([
+            "latex_handler",
+            "project",
+            "template",
+            "pin",
+            "1.2.0",
+            "./thesis",
+        ])
+        .expect("project template pin arguments should parse");
+        assert!(matches!(pin.command, super::Command::Project {
+            command: super::ProjectCommand::Template {
+                command: super::ProjectTemplateCommand::Pin { version, path }
+            }
+        } if version == "1.2.0" && path == PathBuf::from("./thesis")));
+
+        let track = Cli::try_parse_from(["latex_handler", "project", "template", "track"])
+            .expect("project template track arguments should parse");
+        assert!(matches!(
+            track.command,
+            super::Command::Project {
+                command: super::ProjectCommand::Template {
+                    command: super::ProjectTemplateCommand::Track { .. }
+                }
+            }
+        ));
     }
 
     #[test]
