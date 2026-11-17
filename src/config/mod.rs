@@ -4,6 +4,7 @@
 //! `None` so they can inherit values from another configuration layer.
 
 mod defaults;
+mod manager;
 mod resolve;
 mod store;
 
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub use defaults::built_in_defaults;
+pub use manager::{ConfigManager, ConfigScope};
 pub use resolve::{
     ResolvedCompilerConfig, ResolvedConfig, ResolvedDiscoveryConfig, ResolvedGeneralConfig,
     ResolvedOutputConfig, ResolvedProjectConfig, ResolvedStructureConfig, ResolvedTemplateConfig,

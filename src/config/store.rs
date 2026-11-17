@@ -33,6 +33,18 @@ pub enum ConfigError {
         #[source]
         source: toml::de::Error,
     },
+
+    #[error("unknown configuration key '{0}'")]
+    UnknownKey(String),
+
+    #[error("no editor found: set VISUAL or EDITOR")]
+    EditorUnavailable,
+
+    #[error("failed to launch editor: {0}")]
+    EditorLaunch(#[source] io::Error),
+
+    #[error("editor exited unsuccessfully")]
+    EditorFailed,
 }
 
 /// Resolves configuration paths and loads or initializes configuration files.
@@ -409,4 +421,11 @@ mod tests {
         assert!(matches!(&error, ConfigError::Parse { .. }));
         assert!(error.to_string().contains(PROJECT_CONFIG_FILE));
     }
+}
+
+pub(super) fn global_template() -> &'static str {
+    GLOBAL_CONFIG_TEMPLATE
+}
+pub(super) fn project_template() -> &'static str {
+    PROJECT_CONFIG_TEMPLATE
 }

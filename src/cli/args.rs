@@ -170,24 +170,44 @@ pub enum TemplateCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommand {
-    /// Display the effective configuration.
-    Show,
+    /// Display the effective or selected configuration.
+    Show(ConfigScopeArgs),
 
     /// Read one configuration value using a dotted key.
-    Get { key: String },
+    Get {
+        key: String,
+        #[command(flatten)]
+        scope: ConfigScopeArgs,
+    },
 
     /// Set a configuration value using a dotted key.
-    Set { key: String, value: String },
+    Set {
+        key: String,
+        value: String,
+        #[command(flatten)]
+        scope: ConfigScopeArgs,
+    },
 
     /// Restore built-in defaults, or reset one setting.
-    Reset { key: Option<String> },
-
-    /// Open the global or project configuration in the configured editor.
-    Edit {
-        /// Edit the project configuration instead of the global one.
-        #[arg(long)]
-        project: bool,
+    Reset {
+        key: Option<String>,
+        #[command(flatten)]
+        scope: ConfigScopeArgs,
     },
+
+    /// Open the selected configuration in the configured editor.
+    Edit(ConfigScopeArgs),
+}
+
+#[derive(Debug, Clone, Copy, Default, Args)]
+pub struct ConfigScopeArgs {
+    /// Select the global configuration.
+    #[arg(long, conflicts_with = "project")]
+    pub global: bool,
+
+    /// Select the project configuration.
+    #[arg(long, conflicts_with = "global")]
+    pub project: bool,
 }
 
 #[derive(Debug, Args)]
@@ -254,6 +274,20 @@ mod tests {
         .expect("template update arguments should parse");
 
         assert!(matches!(cli.command, super::Command::Template { .. }));
+    }
+
+    #[test]
+    fn parses_config_set_with_explicit_project_scope() {
+        let cli = Cli::try_parse_from([
+            "latex_handler",
+            "config",
+            "set",
+            "compiler.engine",
+            "lualatex",
+            "--project",
+        ])
+        .expect("config set arguments should parse");
+        assert!(matches!(cli.command, super::Command::Config { .. }));
     }
 
     #[test]

@@ -1,16 +1,14 @@
 //! Layer merging and fully resolved configuration values.
 
-use super::{
-    CompilerConfig, Config, DiscoveryConfig, GeneralConfig, LatexEngine, StructureConfig,
-    ThemeConfig, ThemeVariant, built_in_defaults,
-};
+use super::{Config, LatexEngine, ThemeVariant, built_in_defaults};
+use serde::Serialize;
 use std::path::PathBuf;
 
 /// Configuration with every operational setting populated.
 ///
 /// Unlike [`Config`], this type contains no optional operational values. It is
 /// intended for application components such as discovery and compilation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedConfig {
     pub project: ResolvedProjectConfig,
     pub structure: ResolvedStructureConfig,
@@ -22,14 +20,14 @@ pub struct ResolvedConfig {
     pub themes: ResolvedThemeConfig,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ResolvedProjectConfig {
     pub name: Option<String>,
     pub template: Option<String>,
     pub template_version: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedStructureConfig {
     pub source: PathBuf,
     pub build: PathBuf,
@@ -37,14 +35,14 @@ pub struct ResolvedStructureConfig {
     pub logs: PathBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedDiscoveryConfig {
     pub enabled: bool,
     pub patterns: Vec<String>,
     pub exclude: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedCompilerConfig {
     pub backend: String,
     pub engine: LatexEngine,
@@ -56,25 +54,25 @@ pub struct ResolvedCompilerConfig {
     pub max_workers: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedOutputConfig {
     pub mirror_structure: bool,
     pub keep_intermediates: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedGeneralConfig {
     pub default_template: Option<String>,
     pub check_template_updates: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedTemplateConfig {
     pub auto_update_latest: bool,
     pub prerelease: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ResolvedThemeConfig {
     pub enabled: Vec<ThemeVariant>,
     pub default: ThemeVariant,
