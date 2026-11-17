@@ -1,6 +1,9 @@
-use super::args::{Command, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand};
+use super::args::{
+    Command, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand, TemplateCommand,
+};
 use crate::config::{ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{Project, ValidationSeverity, create_project, initialize_project};
+use crate::template::TemplateRegistry;
 use std::error::Error;
 
 /// Dispatch parsed commands. Individual command implementations will be added
@@ -12,7 +15,7 @@ pub fn execute(command: Command) -> Result<(), Box<dyn Error + Send + Sync>> {
         Command::Init(args) => execute_init(args),
         Command::Compile(_) => not_implemented("compile"),
         Command::Project { command } => execute_project(command),
-        Command::Template { .. } => not_implemented("template"),
+        Command::Template { command } => execute_template(command),
         Command::Config { command } => execute_config(command),
         Command::Clean(_) => not_implemented("clean"),
         Command::Update => not_implemented("update"),
@@ -174,5 +177,59 @@ fn execute_new(args: NewArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
             .as_deref()
             .unwrap_or("(none)")
     );
+    Ok(())
+}
+
+fn execute_template(command: TemplateCommand) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = ConfigStore::user_default()?;
+    let registry = TemplateRegistry::new(store.templates_dir());
+    match command {
+        TemplateCommand::List => {
+            let templates = registry.list()?;
+            if templates.is_empty() {
+                println!("No templates installed.");
+            } else {
+                println!("{:<24} {:<14} DESCRIPTION", "NAME", "VERSION");
+                for template in templates {
+                    println!(
+                        "{:<24} {:<14} {}",
+                        template.manifest.name,
+                        template.manifest.version,
+                        template.manifest.description.as_deref().unwrap_or("")
+                    );
+                }
+            }
+        }
+        TemplateCommand::Status { name } => {
+            let templates = match name {
+                Some(name) => vec![registry.get(&name)?],
+                None => registry.list()?,
+            };
+            if templates.is_empty() {
+                println!("No templates installed.");
+            }
+            for template in templates {
+                println!("Template: {}", template.manifest.name);
+                println!("Version: {}", template.manifest.version);
+                println!("Directory: {}", template.directory.display());
+                println!(
+                    "Repository: {}",
+                    template
+                        .manifest
+                        .repository
+                        .as_deref()
+                        .unwrap_or("(not recorded)")
+                );
+                println!(
+                    "Description: {}",
+                    template.manifest.description.as_deref().unwrap_or("(none)")
+                );
+            }
+        }
+        TemplateCommand::Install { .. } => return not_implemented("template install"),
+        TemplateCommand::Update { .. } => return not_implemented("template update"),
+        TemplateCommand::Remove { .. } => return not_implemented("template remove"),
+        TemplateCommand::Versions { .. } => return not_implemented("template versions"),
+    }
     Ok(())
 }
