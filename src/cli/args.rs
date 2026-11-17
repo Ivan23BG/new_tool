@@ -155,7 +155,7 @@ pub enum TemplateCommand {
         repository: Option<String>,
     },
 
-    /// Update one template, or all installed templates.
+    /// Update one template, or all installed templates to the latest release.
     Update {
         name: Option<String>,
         /// Install a specific released version instead of the latest stable one.

@@ -79,3 +79,24 @@ latex_handler new thesis --template university --path ~/Documents
 
 Creation refuses to use an existing destination directory. Template copying
 omits Git metadata and symbolic links.
+
+### Template updates
+
+Update one installed template to its latest stable Git tag, or update every
+installed template:
+
+```sh
+latex_handler template update university
+latex_handler template update
+```
+
+Select a specific published tag (with or without a leading `v`):
+
+```sh
+latex_handler template update university --version 1.0.0
+```
+
+Prerelease tags are excluded by default. Set `templates.prerelease = true` in
+the global configuration to include them when selecting the latest release.
+Updates are staged before replacing the installed template; local modifications
+are protected and cause the update to stop instead of being discarded.

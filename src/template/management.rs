@@ -72,7 +72,7 @@ pub fn list_template_versions(
         .filter_map(|reference| reference.strip_prefix("refs/tags/"))
         .map(str::to_owned)
         .collect::<Vec<_>>();
-    versions.sort();
+    versions.sort_by(|left, right| super::updater::compare_version_tags(left, right));
     versions.dedup();
     Ok(versions)
 }

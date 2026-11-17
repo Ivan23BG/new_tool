@@ -4,7 +4,7 @@ use super::args::{
 use crate::config::{ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{Project, ValidationSeverity, create_project, initialize_project};
 use crate::template::{
-    TemplateRegistry, install_template, list_template_versions, remove_template,
+    TemplateRegistry, install_template, list_template_versions, remove_template, update_template,
 };
 use std::error::Error;
 
@@ -247,7 +247,54 @@ fn execute_template(command: TemplateCommand) -> Result<(), Box<dyn Error + Send
                     .unwrap_or("(not recorded)")
             );
         }
-        TemplateCommand::Update { .. } => return not_implemented("template update"),
+        TemplateCommand::Update { name, version } => {
+            let allow_prerelease = store
+                .load_global()?
+                .templates
+                .and_then(|templates| templates.prerelease)
+                .unwrap_or(false);
+            let names = match name {
+                Some(name) => {
+                    registry.get(&name)?;
+                    vec![name]
+                }
+                None => registry
+                    .list()?
+                    .into_iter()
+                    .map(|template| template.manifest.name)
+                    .collect(),
+            };
+            if names.is_empty() {
+                println!("No templates installed.");
+                return Ok(());
+            }
+            let mut failures = Vec::new();
+            for template_name in names {
+                match update_template(
+                    &registry,
+                    &template_name,
+                    version.as_deref(),
+                    allow_prerelease,
+                ) {
+                    Ok(updated) => println!(
+                        "Updated '{}' to version {}",
+                        updated.manifest.name, updated.manifest.version
+                    ),
+                    Err(error) => {
+                        eprintln!("Could not update '{}': {error}", template_name);
+                        failures.push(template_name);
+                    }
+                }
+            }
+            if !failures.is_empty() {
+                return Err(std::io::Error::other(format!(
+                    "{} template(s) could not be updated: {}",
+                    failures.len(),
+                    failures.join(", ")
+                ))
+                .into());
+            }
+        }
         TemplateCommand::Remove { name, force } => {
             // Validate the name before prompting, so a missing template gives
             // the useful registry error even in non-interactive environments.
