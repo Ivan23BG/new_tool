@@ -1,5 +1,6 @@
-use super::args::{Command, ConfigCommand, ConfigScopeArgs};
+use super::args::{Command, ConfigCommand, ConfigScopeArgs, ProjectCommand};
 use crate::config::{ConfigManager, ConfigScope, ConfigStore};
+use crate::project::{Project, ValidationSeverity};
 use std::error::Error;
 
 /// Dispatch parsed commands. Individual command implementations will be added
@@ -10,7 +11,7 @@ pub fn execute(command: Command) -> Result<(), Box<dyn Error + Send + Sync>> {
         Command::New(_) => not_implemented("new"),
         Command::Init(_) => not_implemented("init"),
         Command::Compile(_) => not_implemented("compile"),
-        Command::Project { .. } => not_implemented("project"),
+        Command::Project { command } => execute_project(command),
         Command::Template { .. } => not_implemented("template"),
         Command::Config { command } => execute_config(command),
         Command::Clean(_) => not_implemented("clean"),
@@ -82,4 +83,71 @@ fn scope_name(scope: ConfigScope) -> &'static str {
         ConfigScope::Global => "global",
         ConfigScope::Project => "project",
     }
+}
+
+fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = ConfigStore::user_default()?;
+    match command {
+        ProjectCommand::Info { path } => {
+            let project = Project::discover(path, &store)?;
+            println!("Project root: {}", project.root().display());
+            println!("Configuration: {}", project.config_path().display());
+            println!("Source directory: {}", project.source_dir().display());
+            println!(
+                "Build directory: {}",
+                project.config().structure.build.display()
+            );
+            println!(
+                "PDF directory: {}",
+                project.config().structure.pdf.display()
+            );
+            println!(
+                "Logs directory: {}",
+                project.config().structure.logs.display()
+            );
+            println!("Engine: {:?}", project.config().compiler.engine);
+            println!(
+                "Template: {}",
+                project
+                    .config()
+                    .project
+                    .template
+                    .as_deref()
+                    .unwrap_or("(none)")
+            );
+            let documents = project.documents()?;
+            println!("Discovered documents: {}", documents.len());
+            for document in documents {
+                println!("  {}", document.relative_path.display());
+            }
+        }
+        ProjectCommand::Validate { path } => {
+            let project = Project::discover(path, &store)?;
+            let report = project.validate();
+            if report.issues.is_empty() {
+                println!("Project structure is valid.");
+            }
+            for issue in &report.issues {
+                let label = match issue.severity {
+                    ValidationSeverity::Warning => "warning",
+                    ValidationSeverity::Error => "error",
+                };
+                println!("{label}: {}", issue.message);
+            }
+            if !report.is_valid() {
+                return Err(std::io::Error::other("project validation failed").into());
+            }
+        }
+        ProjectCommand::List { path } => {
+            let project = Project::discover(path, &store)?;
+            let documents = project.documents()?;
+            if documents.is_empty() {
+                println!("No documents found.");
+            }
+            for document in documents {
+                println!("{}", document.relative_path.display());
+            }
+        }
+    }
+    Ok(())
 }
