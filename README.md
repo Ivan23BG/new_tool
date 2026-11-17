@@ -1,0 +1,55 @@
+# latex_handler
+
+A Rust command-line tool for creating, configuring, and compiling LaTeX projects.
+
+> **Development status:** the rewrite is in progress. The CLI foundation and the
+> configuration structures, configuration-file loading and initialization,
+> and layered configuration resolution are implemented. Configuration CLI
+> operations are being added incrementally.
+
+## Requirements
+
+- Rust stable (edition 2024)
+- A LaTeX distribution and `latexmk` for document compilation (once compilation is implemented)
+- Git for template installation and updates (once template management is implemented)
+
+## Build
+
+```sh
+cargo build
+```
+
+## CLI overview
+
+```sh
+latex_handler --help
+latex_handler compile --help
+latex_handler project --help
+latex_handler template --help
+latex_handler config --help
+latex_handler clean --help
+```
+
+## Configuration
+
+Configuration is represented as layered, partial TOML data. Unspecified values
+remain unset so that project settings can inherit global settings and built-in
+defaults. The built-in defaults are exposed by the library. `ConfigStore` can load the
+global configuration and a project's `latex_handler.toml`, and can create
+commented starter files without overwriting existing user configuration.
+
+The global file is stored in the platform-specific user configuration
+directory provided by the `directories` crate. Project configuration is stored
+at the project root. Missing files load as empty configuration layers; malformed
+TOML produces an error that identifies the offending file. Configuration
+The effective configuration is resolved in this order: built-in defaults,
+global configuration, project configuration, then command-line overrides.
+Partial nested sections merge field by field, so setting one project compiler
+option does not discard unrelated global compiler preferences. `load_resolved`
+provides a fully populated configuration for application components.
+
+## Design
+
+The CLI is intentionally separated from the application logic. Project discovery,
+configuration, compilation, and template management are implemented as
+independent modules so they can be tested without invoking the command-line parser.

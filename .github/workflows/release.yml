@@ -1,0 +1,63 @@
+name: Release CLI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            binary_name: latex_handler
+            archive_name: latex_handler-linux.tar.gz
+
+          - os: windows-latest
+            binary_name: latex_handler.exe
+            archive_name: latex_handler-windows.zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      # Linux: create tar.gz (preserves executable permissions)
+      - name: Package Linux binary
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x target/release/${{ matrix.binary_name }}
+          tar -czf ${{ matrix.archive_name }} \
+            -C target/release \
+            ${{ matrix.binary_name }}
+
+      # Windows: create zip
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "target\release\${{ matrix.binary_name }}" `
+            -DestinationPath "${{ matrix.archive_name }}"
+
+      - name: Upload release archive
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.archive_name }}
+          generate_release_notes: true
