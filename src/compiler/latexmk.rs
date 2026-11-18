@@ -20,6 +20,15 @@ pub(super) fn engine_flag(engine: LatexEngine) -> &'static str {
     }
 }
 
+/// The engine's conventional lowercase name, as used in configuration files.
+pub fn engine_name(engine: LatexEngine) -> &'static str {
+    match engine {
+        LatexEngine::PdfLatex => "pdflatex",
+        LatexEngine::XeLatex => "xelatex",
+        LatexEngine::LuaLatex => "lualatex",
+    }
+}
+
 pub(super) fn theme_name(theme: ThemeVariant) -> &'static str {
     match theme {
         ThemeVariant::Light => "light",

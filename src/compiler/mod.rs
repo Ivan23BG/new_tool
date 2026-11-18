@@ -14,6 +14,8 @@
 //! # Ok::<(), latex_handler::compiler::CompileError>(())
 //! ```
 
+mod diagnostics;
+mod documents;
 mod error;
 mod latexmk;
 mod runner;
@@ -25,8 +27,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub use diagnostics::error_excerpt;
+pub use documents::{compile_document, output_dir_for, select_documents};
 pub use error::CompileError;
-pub use latexmk::THEME_MACRO;
+pub use latexmk::{THEME_MACRO, engine_name};
 pub use runner::{CommandOutput, CommandRunner, CommandSpec, SystemRunner};
 
 /// One document to compile.

@@ -1,3 +1,4 @@
+use crate::project::ProjectError;
 use std::{io, path::PathBuf};
 use thiserror::Error;
 
@@ -15,6 +16,15 @@ pub enum CompileError {
         "invalid compiler.interaction '{0}': expected one of batchmode, nonstopmode, scrollmode, errorstopmode"
     )]
     InvalidInteraction(String),
+    #[error("no LaTeX documents found to compile; pass --file or check discovery settings")]
+    NoDocuments,
+    #[error("'{document}' is outside the project's source directory '{source_dir}'")]
+    DocumentOutsideSource {
+        document: PathBuf,
+        source_dir: PathBuf,
+    },
+    #[error(transparent)]
+    Project(#[from] ProjectError),
     #[error("LaTeX document not found: '{0}'")]
     DocumentNotFound(PathBuf),
     #[error(

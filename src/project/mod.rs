@@ -24,6 +24,16 @@ pub struct Project {
 impl Project {
     /// Load a project from a directory or a `.tex` file inside it.
     pub fn load(path: impl AsRef<Path>, store: &ConfigStore) -> Result<Self, ProjectError> {
+        Self::load_with_overrides(path, store, &crate::config::Config::default())
+    }
+
+    /// Like [`Project::load`], with command-line overrides applied as the
+    /// highest-precedence configuration layer.
+    pub fn load_with_overrides(
+        path: impl AsRef<Path>,
+        store: &ConfigStore,
+        overrides: &crate::config::Config,
+    ) -> Result<Self, ProjectError> {
         let supplied = path.as_ref();
         let path = supplied
             .canonicalize()
@@ -44,7 +54,7 @@ impl Project {
         };
 
         let config_path = ConfigStore::project_config_path(&root);
-        let config = store.load_resolved(&root, &crate::config::Config::default())?;
+        let config = store.load_resolved(&root, overrides)?;
         Ok(Self {
             root,
             config_path,
@@ -55,6 +65,16 @@ impl Project {
     /// Find the nearest project root by walking from `start` towards `/`.
     /// A project marker (`latex_handler.toml`) takes precedence over a `src/` directory.
     pub fn discover(start: impl AsRef<Path>, store: &ConfigStore) -> Result<Self, ProjectError> {
+        Self::discover_with_overrides(start, store, &crate::config::Config::default())
+    }
+
+    /// Like [`Project::discover`], with command-line overrides applied as the
+    /// highest-precedence configuration layer.
+    pub fn discover_with_overrides(
+        start: impl AsRef<Path>,
+        store: &ConfigStore,
+        overrides: &crate::config::Config,
+    ) -> Result<Self, ProjectError> {
         let start = start
             .as_ref()
             .canonicalize()
@@ -70,13 +90,17 @@ impl Project {
         let mut fallback = None;
         for candidate in directory.ancestors() {
             if ConfigStore::project_config_path(candidate).is_file() {
-                return Self::load(candidate, store);
+                return Self::load_with_overrides(candidate, store, overrides);
             }
             if candidate.join("src").is_dir() && fallback.is_none() {
                 fallback = Some(candidate.to_path_buf());
             }
         }
-        Self::load(fallback.unwrap_or_else(|| directory.to_path_buf()), store)
+        Self::load_with_overrides(
+            fallback.unwrap_or_else(|| directory.to_path_buf()),
+            store,
+            overrides,
+        )
     }
 
     pub fn root(&self) -> &Path {
@@ -142,6 +166,31 @@ mod tests {
             PathBuf::from("chapters/one_main.tex")
         );
         assert_eq!(documents[1].relative_path, PathBuf::from("main.tex"));
+    }
+
+    #[test]
+    fn cli_overrides_take_precedence_over_project_configuration() {
+        use crate::config::{CompilerConfig, Config, LatexEngine};
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("latex_handler.toml"),
+            "[compiler]\nengine = \"xelatex\"\n",
+        )
+        .unwrap();
+        let store = ConfigStore::new(dir.path().join("global"));
+
+        let plain = Project::load(dir.path(), &store).unwrap();
+        assert_eq!(plain.config().compiler.engine, LatexEngine::XeLatex);
+
+        let overrides = Config {
+            compiler: Some(CompilerConfig {
+                engine: Some(LatexEngine::LuaLatex),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let overridden = Project::discover_with_overrides(dir.path(), &store, &overrides).unwrap();
+        assert_eq!(overridden.config().compiler.engine, LatexEngine::LuaLatex);
     }
 
     #[test]

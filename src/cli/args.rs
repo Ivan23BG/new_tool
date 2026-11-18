@@ -118,6 +118,16 @@ pub enum LatexEngine {
     Lualatex,
 }
 
+impl From<LatexEngine> for crate::config::LatexEngine {
+    fn from(engine: LatexEngine) -> Self {
+        match engine {
+            LatexEngine::Pdflatex => Self::PdfLatex,
+            LatexEngine::Xelatex => Self::XeLatex,
+            LatexEngine::Lualatex => Self::LuaLatex,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 pub enum ProjectCommand {
     /// Display project configuration and detected structure.
@@ -294,6 +304,14 @@ mod tests {
         .expect("compile arguments should parse");
 
         assert!(matches!(cli.command, super::Command::Compile(_)));
+    }
+
+    #[test]
+    fn cli_engines_convert_to_config_engines() {
+        use crate::config::LatexEngine as Config;
+        assert_eq!(Config::from(super::LatexEngine::Pdflatex), Config::PdfLatex);
+        assert_eq!(Config::from(super::LatexEngine::Xelatex), Config::XeLatex);
+        assert_eq!(Config::from(super::LatexEngine::Lualatex), Config::LuaLatex);
     }
 
     #[test]

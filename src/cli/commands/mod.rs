@@ -1,8 +1,11 @@
 use super::args::{
-    Command, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand,
+    Command, CompileArgs, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand,
     ProjectTemplateCommand, TemplateCommand,
 };
-use crate::config::{ConfigManager, ConfigScope, ConfigStore};
+use crate::compiler::{
+    CompileOutcome, Compiler, compile_document, engine_name, error_excerpt, select_documents,
+};
+use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{
     Project, ValidationSeverity, create_project, initialize_project, set_template_version,
 };
@@ -14,11 +17,11 @@ use std::error::Error;
 /// Dispatch parsed commands. Individual command implementations will be added
 /// in later stages; keeping dispatch centralized avoids putting application
 /// logic in the argument definitions.
-pub fn execute(command: Command) -> Result<(), Box<dyn Error + Send + Sync>> {
+pub fn execute(command: Command, verbose: bool) -> Result<(), Box<dyn Error + Send + Sync>> {
     match command {
         Command::New(args) => execute_new(args),
         Command::Init(args) => execute_init(args),
-        Command::Compile(_) => not_implemented("compile"),
+        Command::Compile(args) => execute_compile(args, verbose),
         Command::Project { command } => execute_project(command),
         Command::Template { command } => execute_template(command),
         Command::Config { command } => execute_config(command),
@@ -29,6 +32,96 @@ pub fn execute(command: Command) -> Result<(), Box<dyn Error + Send + Sync>> {
             Ok(())
         }
     }
+}
+
+fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error + Send + Sync>> {
+    if args.theme.is_some() {
+        return Err(std::io::Error::other("--theme is not supported yet").into());
+    }
+    let store = ConfigStore::user_default()?;
+    let overrides = Config {
+        compiler: args.engine.map(|engine| CompilerConfig {
+            engine: Some(engine.into()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let start = args.path.unwrap_or_else(|| ".".into());
+    let project = Project::discover_with_overrides(&start, &store, &overrides)?;
+
+    // A .tex file given as the project path selects that document.
+    let mut files = args.file;
+    if start.is_file() && start.extension().is_some_and(|ext| ext == "tex") {
+        files.push(start.canonicalize()?);
+    }
+    let documents = select_documents(&project, &files, &std::env::current_dir()?)?;
+
+    let compiler = Compiler::new(project.config().compiler.clone());
+    let total = documents.len();
+    println!(
+        "Compiling {total} document{} with {} ({})",
+        if total == 1 { "" } else { "s" },
+        compiler.settings().backend,
+        engine_name(compiler.settings().engine)
+    );
+
+    let (mut succeeded, mut failed) = (0usize, 0usize);
+    for (index, document) in documents.iter().enumerate() {
+        let label = format!(
+            "[{}/{total}] {}",
+            index + 1,
+            document.relative_path.display()
+        );
+        match compile_document(&project, &compiler, document, args.force) {
+            Ok(report) => {
+                if verbose {
+                    println!("  $ {}", report.command.display());
+                }
+                let seconds = report.duration.as_secs_f32();
+                match report.outcome {
+                    CompileOutcome::Succeeded => {
+                        succeeded += 1;
+                        let pdf = report
+                            .pdf
+                            .as_deref()
+                            .map(|p| p.strip_prefix(project.root()).unwrap_or(p));
+                        println!(
+                            "{label}  SUCCESS ({seconds:.1}s)  {}",
+                            pdf.map(|p| p.display().to_string()).unwrap_or_default()
+                        );
+                    }
+                    CompileOutcome::Failed { exit_code } => {
+                        failed += 1;
+                        let code = exit_code.map_or("signal".to_string(), |c| c.to_string());
+                        println!("{label}  FAILED (exit {code}, {seconds:.1}s)");
+                        for line in error_excerpt(&report.stdout) {
+                            println!("    {line}");
+                        }
+                        if let Some(log) = &report.log {
+                            println!(
+                                "    full log: {}",
+                                log.strip_prefix(project.root()).unwrap_or(log).display()
+                            );
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                failed += 1;
+                println!("{label}  ERROR");
+                println!("    {error}");
+            }
+        }
+    }
+
+    println!("\n{succeeded} succeeded, {failed} failed.");
+    if failed > 0 {
+        return Err(
+            std::io::Error::other(format!("{failed} document(s) failed to compile")).into(),
+        );
+    }
+    Ok(())
 }
 
 fn not_implemented(command: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
