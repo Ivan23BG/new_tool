@@ -19,6 +19,10 @@ pub struct TemplateManifest {
     pub repository: Option<String>,
     #[serde(default)]
     pub authors: Vec<String>,
+    /// Directory containing reusable resources shared by projects using this template.
+    /// This directory stays in the installed template and is not copied into projects.
+    #[serde(default)]
+    pub shared_assets: Option<PathBuf>,
     /// Other templates required by this template.
     ///
     /// Keys are template names and values describe the accepted version range.
@@ -74,6 +78,8 @@ pub enum TemplateManifestError {
         name: String,
         requirement: String,
     },
+    #[error("template manifest '{path}' declares an unsafe shared-assets path '{asset_path}'")]
+    InvalidSharedAssetsPath { path: PathBuf, asset_path: PathBuf },
 }
 
 impl TemplateManifest {
@@ -101,6 +107,24 @@ impl TemplateManifest {
         }
         if manifest.version.trim().is_empty() {
             return Err(TemplateManifestError::EmptyVersion(path));
+        }
+        if let Some(asset_path) = &manifest.shared_assets {
+            let portable = asset_path.to_string_lossy();
+            let safe = !portable.is_empty()
+                && !asset_path.is_absolute()
+                && !portable.contains('\\')
+                && portable
+                    .split('/')
+                    .all(|part| !part.is_empty() && part != "." && part != "..")
+                && asset_path
+                    .components()
+                    .all(|component| matches!(component, std::path::Component::Normal(_)));
+            if !safe {
+                return Err(TemplateManifestError::InvalidSharedAssetsPath {
+                    path,
+                    asset_path: asset_path.clone(),
+                });
+            }
         }
         for (name, dependency) in &manifest.dependencies {
             let valid_dependency_name = !name.trim().is_empty()
@@ -207,6 +231,39 @@ repository = "https://example.invalid/diagrams.git"
         .unwrap();
         let manifest = TemplateManifest::load(dir.path()).unwrap();
         assert!(manifest.dependencies.is_empty());
+    }
+
+    #[test]
+    fn rejects_unsafe_shared_asset_paths() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(TEMPLATE_MANIFEST_FILE);
+
+        for unsafe_path in ["../outside", "/absolute/path", "./assets", "assets//nested"] {
+            fs::write(
+                &path,
+                format!(
+                    "name = 'university'\nversion = '1.0.0'\nshared_assets = '{unsafe_path}'\n"
+                ),
+            )
+            .unwrap();
+            assert!(matches!(
+                TemplateManifest::load(dir.path()),
+                Err(TemplateManifestError::InvalidSharedAssetsPath { .. })
+            ));
+        }
+
+        fs::write(
+            &path,
+            r#"name = 'university'
+version = '1.0.0'
+shared_assets = '..\outside'
+"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            TemplateManifest::load(dir.path()),
+            Err(TemplateManifestError::InvalidSharedAssetsPath { .. })
+        ));
     }
 
     #[test]
