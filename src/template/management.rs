@@ -131,6 +131,7 @@ mod tests {
             description: None,
             repository: Some(repository.to_string_lossy().into_owned()),
             authors: Vec::new(),
+            dependencies: Default::default(),
         }
         .write(&directory)
         .unwrap();
@@ -163,6 +164,7 @@ mod tests {
             description: None,
             repository: None,
             authors: Vec::new(),
+            dependencies: Default::default(),
         }
         .write(&directory)
         .unwrap();
