@@ -35,6 +35,9 @@ pub struct TemplateDependency {
     /// Whether the dependency may be omitted by the project.
     #[serde(default)]
     pub optional: bool,
+    /// Git repository used when this dependency is not installed yet.
+    #[serde(default)]
+    pub repository: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -63,6 +66,14 @@ pub enum TemplateManifestError {
         "template manifest '{path}' declares an empty version requirement for dependency '{name}'"
     )]
     EmptyDependencyVersion { path: PathBuf, name: String },
+    #[error(
+        "template manifest '{path}' declares an invalid semantic version requirement for dependency '{name}': {requirement}"
+    )]
+    InvalidDependencyVersion {
+        path: PathBuf,
+        name: String,
+        requirement: String,
+    },
 }
 
 impl TemplateManifest {
@@ -114,6 +125,13 @@ impl TemplateManifest {
                     name: name.clone(),
                 });
             }
+            if semver::VersionReq::parse(&dependency.version).is_err() {
+                return Err(TemplateManifestError::InvalidDependencyVersion {
+                    path,
+                    name: name.clone(),
+                    requirement: dependency.version.clone(),
+                });
+            }
         }
         Ok(manifest)
     }
@@ -159,6 +177,7 @@ version = "^2.1"
 [dependencies.diagrams]
 version = ">=1.0, <2.0"
 optional = true
+repository = "https://example.invalid/diagrams.git"
 "#,
         )
         .unwrap();
@@ -169,6 +188,10 @@ optional = true
         assert!(!manifest.dependencies["common"].optional);
         assert_eq!(manifest.dependencies["diagrams"].version, ">=1.0, <2.0");
         assert!(manifest.dependencies["diagrams"].optional);
+        assert_eq!(
+            manifest.dependencies["diagrams"].repository.as_deref(),
+            Some("https://example.invalid/diagrams.git")
+        );
 
         manifest.write(dir.path()).unwrap();
         assert_eq!(TemplateManifest::load(dir.path()).unwrap(), manifest);
@@ -219,6 +242,16 @@ optional = true
         assert!(matches!(
             TemplateManifest::load(dir.path()),
             Err(TemplateManifestError::EmptyDependencyVersion { .. })
+        ));
+
+        fs::write(
+            &path,
+            "name = 'university'\nversion = '1.0.0'\n[dependencies.common]\nversion = 'not a version'",
+        )
+        .unwrap();
+        assert!(matches!(
+            TemplateManifest::load(dir.path()),
+            Err(TemplateManifestError::InvalidDependencyVersion { .. })
         ));
     }
 

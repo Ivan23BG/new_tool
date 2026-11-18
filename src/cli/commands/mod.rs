@@ -12,7 +12,8 @@ use crate::project::{
     Project, ValidationSeverity, create_project, initialize_project, set_template_version,
 };
 use crate::template::{
-    TemplateRegistry, install_template, list_template_versions, remove_template, update_template,
+    TemplateRegistry, install_template_with_dependencies, list_template_versions, remove_template,
+    update_template,
 };
 use std::error::Error;
 
@@ -447,12 +448,26 @@ fn execute_template(command: TemplateCommand) -> Result<(), Box<dyn Error + Send
             let global = store.load_global()?;
             let configured_repository = global.templates.and_then(|templates| templates.repository);
             let repository = repository.or(configured_repository);
-            let installed = install_template(&registry, &name, repository.as_deref())?;
+            let installed =
+                install_template_with_dependencies(&registry, &name, repository.as_deref())?;
             println!(
                 "Installed template '{}' ({})",
                 installed.manifest.name, installed.manifest.version
             );
             println!("Directory: {}", installed.directory.display());
+            println!("Dependencies:");
+            if installed.manifest.dependencies.is_empty() {
+                println!("  (none)");
+            } else {
+                for (dependency, requirement) in &installed.manifest.dependencies {
+                    let state = match registry.get(dependency) {
+                        Ok(item) => format!("installed ({})", item.manifest.version),
+                        Err(_) if requirement.optional => "optional, not installed".to_owned(),
+                        Err(_) => "missing".to_owned(),
+                    };
+                    println!("  {dependency} {} — {state}", requirement.version);
+                }
+            }
             println!(
                 "Repository: {}",
                 installed
