@@ -3,7 +3,8 @@ use super::args::{
     ProjectTemplateCommand, TemplateCommand,
 };
 use crate::compiler::{
-    CompileOutcome, Compiler, compile_document, engine_name, error_excerpt, select_documents,
+    CompileOutcome, Compiler, DocumentResult, compile_documents, engine_name, error_excerpt,
+    select_documents, worker_count,
 };
 use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{
@@ -59,62 +60,64 @@ fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error
 
     let compiler = Compiler::new(project.config().compiler.clone());
     let total = documents.len();
+    let workers = worker_count(compiler.settings(), total);
     println!(
-        "Compiling {total} document{} with {} ({})",
+        "Compiling {total} document{} with {} ({}){}\n",
         if total == 1 { "" } else { "s" },
         compiler.settings().backend,
-        engine_name(compiler.settings().engine)
+        engine_name(compiler.settings().engine),
+        if workers > 1 {
+            format!(", up to {workers} in parallel")
+        } else {
+            String::new()
+        }
     );
 
-    let (mut succeeded, mut failed) = (0usize, 0usize);
-    for (index, document) in documents.iter().enumerate() {
+    // Results are printed as each document finishes. Each block is written
+    // with a single call so output from concurrent workers never interleaves.
+    let print_result = |index: usize, item: &DocumentResult| {
         let label = format!(
             "[{}/{total}] {}",
             index + 1,
-            document.relative_path.display()
+            item.document.relative_path.display()
         );
-        match compile_document(&project, &compiler, document, args.force) {
+        let relative = |path: &std::path::Path| {
+            path.strip_prefix(project.root())
+                .unwrap_or(path)
+                .display()
+                .to_string()
+        };
+        let mut block = String::new();
+        match &item.result {
             Ok(report) => {
-                if verbose {
-                    println!("  $ {}", report.command.display());
-                }
                 let seconds = report.duration.as_secs_f32();
                 match report.outcome {
                     CompileOutcome::Succeeded => {
-                        succeeded += 1;
-                        let pdf = report
-                            .pdf
-                            .as_deref()
-                            .map(|p| p.strip_prefix(project.root()).unwrap_or(p));
-                        println!(
-                            "{label}  SUCCESS ({seconds:.1}s)  {}",
-                            pdf.map(|p| p.display().to_string()).unwrap_or_default()
-                        );
+                        let pdf = report.pdf.as_deref().map(&relative).unwrap_or_default();
+                        block.push_str(&format!("{label}  SUCCESS ({seconds:.1}s)  {pdf}\n"));
                     }
                     CompileOutcome::Failed { exit_code } => {
-                        failed += 1;
                         let code = exit_code.map_or("signal".to_string(), |c| c.to_string());
-                        println!("{label}  FAILED (exit {code}, {seconds:.1}s)");
+                        block.push_str(&format!("{label}  FAILED (exit {code}, {seconds:.1}s)\n"));
                         for line in error_excerpt(&report.stdout) {
-                            println!("    {line}");
+                            block.push_str(&format!("    {line}\n"));
                         }
                         if let Some(log) = &report.log {
-                            println!(
-                                "    full log: {}",
-                                log.strip_prefix(project.root()).unwrap_or(log).display()
-                            );
+                            block.push_str(&format!("    full log: {}\n", relative(log)));
                         }
                     }
                 }
+                if verbose {
+                    block.push_str(&format!("    $ {}\n", report.command.display()));
+                }
             }
-            Err(error) => {
-                failed += 1;
-                println!("{label}  ERROR");
-                println!("    {error}");
-            }
+            Err(error) => block.push_str(&format!("{label}  ERROR\n    {error}\n")),
         }
-    }
+        print!("{block}");
+    };
 
+    let batch = compile_documents(&project, &compiler, &documents, args.force, print_result)?;
+    let (succeeded, failed) = (batch.succeeded(), batch.failed());
     println!("\n{succeeded} succeeded, {failed} failed.");
     if failed > 0 {
         return Err(

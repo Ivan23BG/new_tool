@@ -25,6 +25,17 @@ pub enum CompileError {
     },
     #[error(transparent)]
     Project(#[from] ProjectError),
+    #[error(
+        "documents '{first}' and '{second}' would share the output directory '{directory}'; \
+         enable output.mirror_structure or rename one of them"
+    )]
+    OutputCollision {
+        first: PathBuf,
+        second: PathBuf,
+        directory: PathBuf,
+    },
+    #[error("could not start the compilation worker pool: {0}")]
+    WorkerPool(String),
     #[error("LaTeX document not found: '{0}'")]
     DocumentNotFound(PathBuf),
     #[error(

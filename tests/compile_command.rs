@@ -189,3 +189,107 @@ fn theme_flag_is_rejected_until_it_is_implemented() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("--theme"));
 }
+
+fn project_with_documents(root: &Path, good: usize, bad: usize) -> std::path::PathBuf {
+    let project = root.join("project");
+    fs::create_dir_all(project.join("src/modules")).unwrap();
+    for n in 0..good {
+        let dir = if n % 2 == 0 { "src" } else { "src/modules" };
+        fs::write(
+            project.join(dir).join(format!("doc{n}_main.tex")),
+            document("Fine"),
+        )
+        .unwrap();
+    }
+    for n in 0..bad {
+        fs::write(
+            project.join(format!("src/bad{n}_main.tex")),
+            document("\\undefinedcommand"),
+        )
+        .unwrap();
+    }
+    project
+}
+
+#[test]
+fn parallel_batch_reports_every_document_and_keeps_blocks_intact() {
+    if !latexmk_available() {
+        return;
+    }
+    let dir = tempdir().unwrap();
+    let project = project_with_documents(dir.path(), 5, 1);
+
+    let output = run(dir.path(), &["compile", project.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1), "{stdout}");
+    assert!(stdout.contains("up to 6 in parallel"), "{stdout}");
+    assert!(stdout.contains("5 succeeded, 1 failed."), "{stdout}");
+    for n in 0..5 {
+        assert_eq!(
+            stdout.matches(&format!("doc{n}_main.tex  SUCCESS")).count(),
+            1,
+            "{stdout}"
+        );
+    }
+    // The failure block must not be interleaved with other documents' lines.
+    let failed = stdout
+        .split("bad0_main.tex  FAILED")
+        .nth(1)
+        .expect("failure line");
+    let block: Vec<&str> = failed.lines().skip(1).take(3).collect();
+    assert!(block[0].contains("Undefined control sequence"), "{block:?}");
+    assert!(block[1].trim_start().starts_with("l."), "{block:?}");
+    assert!(
+        block[2].contains("full log: build/bad0_main/bad0_main.log"),
+        "{block:?}"
+    );
+    assert!(
+        project
+            .join("build/modules/doc1_main/doc1_main.pdf")
+            .is_file()
+    );
+}
+
+#[test]
+fn parallelism_can_be_turned_off_in_project_configuration() {
+    if !latexmk_available() {
+        return;
+    }
+    let dir = tempdir().unwrap();
+    let project = project_with_documents(dir.path(), 3, 0);
+    fs::write(
+        project.join("latex_handler.toml"),
+        "[compiler]\nparallel = false\n",
+    )
+    .unwrap();
+
+    let output = run(dir.path(), &["compile", project.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stdout}");
+    assert!(!stdout.contains("in parallel"), "{stdout}");
+    assert!(stdout.contains("3 succeeded, 0 failed."), "{stdout}");
+}
+
+#[test]
+fn colliding_flat_output_directories_are_refused() {
+    let dir = tempdir().unwrap();
+    let project = dir.path().join("project");
+    fs::create_dir_all(project.join("src/one")).unwrap();
+    fs::create_dir_all(project.join("src/two")).unwrap();
+    fs::write(project.join("src/one/x_main.tex"), document("1")).unwrap();
+    fs::write(project.join("src/two/x_main.tex"), document("2")).unwrap();
+    fs::write(
+        project.join("latex_handler.toml"),
+        "[output]\nmirror_structure = false\n",
+    )
+    .unwrap();
+
+    let output = run(dir.path(), &["compile", project.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("share the output directory"));
+    assert!(
+        !project.join("build").exists(),
+        "nothing may be built after a collision"
+    );
+}

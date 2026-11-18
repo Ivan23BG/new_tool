@@ -14,6 +14,7 @@
 //! # Ok::<(), latex_handler::compiler::CompileError>(())
 //! ```
 
+mod batch;
 mod diagnostics;
 mod documents;
 mod error;
@@ -27,6 +28,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub use batch::{BatchReport, DocumentResult, compile_documents, worker_count};
 pub use diagnostics::error_excerpt;
 pub use documents::{compile_document, output_dir_for, select_documents};
 pub use error::CompileError;
