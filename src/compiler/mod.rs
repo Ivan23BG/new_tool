@@ -19,6 +19,7 @@ mod diagnostics;
 mod documents;
 mod error;
 mod latexmk;
+mod output;
 mod runner;
 
 use crate::config::{LatexEngine, ResolvedCompilerConfig, ThemeVariant};
@@ -30,9 +31,12 @@ use std::{
 
 pub use batch::{BatchReport, DocumentResult, compile_documents, worker_count};
 pub use diagnostics::error_excerpt;
-pub use documents::{compile_document, output_dir_for, select_documents};
+pub use documents::{
+    CompileJob, ThemeSelection, compile_document, log_path_for, output_dir_for, output_stem,
+    pdf_path_for, plan_jobs, select_documents,
+};
 pub use error::CompileError;
-pub use latexmk::{THEME_MACRO, engine_name};
+pub use latexmk::{THEME_MACRO, engine_name, theme_name};
 pub use runner::{CommandOutput, CommandRunner, CommandSpec, SystemRunner};
 
 /// One document to compile.
@@ -84,6 +88,11 @@ pub struct CompileReport {
     pub pdf: Option<PathBuf>,
     /// The TeX `.log` in `output_dir`, when one exists.
     pub log: Option<PathBuf>,
+    /// Where the PDF was published (`pdfs/…`). Only set by project-level
+    /// compilation, and only after a successful build.
+    pub final_pdf: Option<PathBuf>,
+    /// Where the log was published (`logs/…`), also after failed builds.
+    pub final_log: Option<PathBuf>,
     pub command: CommandSpec,
     pub stdout: String,
     pub stderr: String,
@@ -176,6 +185,8 @@ impl<R: CommandRunner> Compiler<R> {
             duration,
             pdf,
             log,
+            final_pdf: None,
+            final_log: None,
             command,
             stdout: output.stdout,
             stderr: output.stderr,

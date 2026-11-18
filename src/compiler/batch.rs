@@ -1,17 +1,18 @@
 //! Compilation of several documents, optionally in parallel.
 
 use super::{
-    CommandRunner, CompileError, CompileReport, Compiler, compile_document, output_dir_for,
+    CommandRunner, CompileError, CompileJob, CompileReport, Compiler, compile_document,
+    output_dir_for,
 };
 use crate::config::ResolvedCompilerConfig;
-use crate::project::{DiscoveredDocument, Project};
+use crate::project::Project;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-/// The outcome of compiling one document of a batch.
+/// The outcome of one job (a document with one theme) of a batch.
 #[derive(Debug)]
 pub struct DocumentResult {
-    pub document: DiscoveredDocument,
+    pub job: CompileJob,
     /// `Err` means compilation could not be attempted; a TeX failure is an
     /// `Ok` report whose outcome is `Failed`.
     pub result: Result<CompileReport, CompileError>,
@@ -50,19 +51,19 @@ pub fn worker_count(settings: &ResolvedCompilerConfig, documents: usize) -> usiz
     settings.max_workers.clamp(1, documents.max(1))
 }
 
-/// Compile `documents`, running up to [`worker_count`] at once.
+/// Compile `jobs`, running up to [`worker_count`] at once.
 ///
 /// `on_complete` is called from the worker thread as soon as each document
-/// finishes, with the document's index in `documents`; calls for different
+/// finishes, with the job's index in `jobs`; calls for different
 /// documents may therefore arrive in any order and may overlap. The returned
 /// report is always in input order. A failing document never stops the others.
 ///
-/// Fails before compiling anything if two documents would share an output
+/// Fails before compiling anything if two jobs would share an output
 /// directory, since concurrent latexmk runs would corrupt each other.
 pub fn compile_documents<R, F>(
     project: &Project,
     compiler: &Compiler<R>,
-    documents: &[DiscoveredDocument],
+    jobs: &[CompileJob],
     force: bool,
     on_complete: F,
 ) -> Result<BatchReport, CompileError>
@@ -70,22 +71,21 @@ where
     R: CommandRunner,
     F: Fn(usize, &DocumentResult) + Sync,
 {
-    check_output_collisions(project, documents)?;
+    check_output_collisions(project, jobs)?;
 
-    let workers = worker_count(compiler.settings(), documents.len());
+    let workers = worker_count(compiler.settings(), jobs.len());
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(workers)
         .build()
         .map_err(|error| CompileError::WorkerPool(error.to_string()))?;
 
     let results = pool.install(|| {
-        documents
-            .par_iter()
+        jobs.par_iter()
             .enumerate()
-            .map(|(index, document)| {
+            .map(|(index, job)| {
                 let result = DocumentResult {
-                    document: document.clone(),
-                    result: compile_document(project, compiler, document, force),
+                    job: job.clone(),
+                    result: compile_document(project, compiler, job, force),
                 };
                 on_complete(index, &result);
                 result
@@ -95,17 +95,14 @@ where
     Ok(BatchReport { results })
 }
 
-fn check_output_collisions(
-    project: &Project,
-    documents: &[DiscoveredDocument],
-) -> Result<(), CompileError> {
-    let mut seen: HashMap<_, &DiscoveredDocument> = HashMap::new();
-    for document in documents {
-        let directory = output_dir_for(project, document);
-        if let Some(first) = seen.insert(directory.clone(), document) {
+fn check_output_collisions(project: &Project, jobs: &[CompileJob]) -> Result<(), CompileError> {
+    let mut seen: HashMap<_, &CompileJob> = HashMap::new();
+    for job in jobs {
+        let directory = output_dir_for(project, job);
+        if let Some(first) = seen.insert(directory.clone(), job) {
             return Err(CompileError::OutputCollision {
-                first: first.relative_path.clone(),
-                second: document.relative_path.clone(),
+                first: first.document.relative_path.clone(),
+                second: job.document.relative_path.clone(),
                 directory,
             });
         }
@@ -176,7 +173,7 @@ mod tests {
         }
     }
 
-    fn project_with(files: &[&str], config: &str) -> (TempDir, Project, Vec<DiscoveredDocument>) {
+    fn project_with(files: &[&str], config: &str) -> (TempDir, Project, Vec<CompileJob>) {
         let dir = tempdir().unwrap();
         let root = dir.path();
         for file in files {
@@ -186,7 +183,12 @@ mod tests {
         }
         fs::write(root.join("latex_handler.toml"), config).unwrap();
         let project = Project::load(root, &ConfigStore::new(root.join("global"))).unwrap();
-        let documents = project.documents().unwrap();
+        let documents = project
+            .documents()
+            .unwrap()
+            .into_iter()
+            .map(CompileJob::new)
+            .collect();
         (dir, project, documents)
     }
 
@@ -254,7 +256,7 @@ mod tests {
         let order: Vec<_> = report
             .results
             .iter()
-            .map(|r| r.document.relative_path.to_string_lossy().into_owned())
+            .map(|r| r.job.document.relative_path.to_string_lossy().into_owned())
             .collect();
         assert_eq!(
             order,

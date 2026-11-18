@@ -1,11 +1,12 @@
 use super::args::{
     Command, CompileArgs, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand,
-    ProjectTemplateCommand, TemplateCommand,
+    ProjectTemplateCommand, TemplateCommand, Theme,
 };
 use crate::compiler::{
-    CompileOutcome, Compiler, DocumentResult, compile_documents, engine_name, error_excerpt,
-    select_documents, worker_count,
+    CompileOutcome, Compiler, DocumentResult, ThemeSelection, compile_documents, engine_name,
+    error_excerpt, plan_jobs, select_documents, worker_count,
 };
+use crate::config::ThemeVariant;
 use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{
     Project, ValidationSeverity, create_project, initialize_project, set_template_version,
@@ -36,9 +37,6 @@ pub fn execute(command: Command, verbose: bool) -> Result<(), Box<dyn Error + Se
 }
 
 fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error + Send + Sync>> {
-    if args.theme.is_some() {
-        return Err(std::io::Error::other("--theme is not supported yet").into());
-    }
     let store = ConfigStore::user_default()?;
     let overrides = Config {
         compiler: args.engine.map(|engine| CompilerConfig {
@@ -58,12 +56,28 @@ fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error
     }
     let documents = select_documents(&project, &files, &std::env::current_dir()?)?;
 
+    let selection = match args.theme {
+        None => ThemeSelection::Default,
+        Some(Theme::Light) => ThemeSelection::Only(ThemeVariant::Light),
+        Some(Theme::Dark) => ThemeSelection::Only(ThemeVariant::Dark),
+        Some(Theme::All) => ThemeSelection::All,
+    };
+    let jobs = plan_jobs(&project, &documents, selection)?;
+
     let compiler = Compiler::new(project.config().compiler.clone());
-    let total = documents.len();
+    let total = jobs.len();
     let workers = worker_count(compiler.settings(), total);
+    let subject = if total == documents.len() {
+        format!("{total} document{}", if total == 1 { "" } else { "s" })
+    } else {
+        format!(
+            "{} documents x {} themes",
+            documents.len(),
+            total / documents.len()
+        )
+    };
     println!(
-        "Compiling {total} document{} with {} ({}){}\n",
-        if total == 1 { "" } else { "s" },
+        "Compiling {subject} with {} ({}){}\n",
         compiler.settings().backend,
         engine_name(compiler.settings().engine),
         if workers > 1 {
@@ -76,11 +90,7 @@ fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error
     // Results are printed as each document finishes. Each block is written
     // with a single call so output from concurrent workers never interleaves.
     let print_result = |index: usize, item: &DocumentResult| {
-        let label = format!(
-            "[{}/{total}] {}",
-            index + 1,
-            item.document.relative_path.display()
-        );
+        let label = format!("[{}/{total}] {}", index + 1, item.job.label(&project));
         let relative = |path: &std::path::Path| {
             path.strip_prefix(project.root())
                 .unwrap_or(path)
@@ -93,7 +103,11 @@ fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error
                 let seconds = report.duration.as_secs_f32();
                 match report.outcome {
                     CompileOutcome::Succeeded => {
-                        let pdf = report.pdf.as_deref().map(&relative).unwrap_or_default();
+                        let pdf = report
+                            .final_pdf
+                            .as_deref()
+                            .map(&relative)
+                            .unwrap_or_default();
                         block.push_str(&format!("{label}  SUCCESS ({seconds:.1}s)  {pdf}\n"));
                     }
                     CompileOutcome::Failed { exit_code } => {
@@ -102,7 +116,7 @@ fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error
                         for line in error_excerpt(&report.stdout) {
                             block.push_str(&format!("    {line}\n"));
                         }
-                        if let Some(log) = &report.log {
+                        if let Some(log) = report.final_log.as_ref().or(report.log.as_ref()) {
                             block.push_str(&format!("    full log: {}\n", relative(log)));
                         }
                     }
@@ -116,7 +130,7 @@ fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error
         print!("{block}");
     };
 
-    let batch = compile_documents(&project, &compiler, &documents, args.force, print_result)?;
+    let batch = compile_documents(&project, &compiler, &jobs, args.force, print_result)?;
     let (succeeded, failed) = (batch.succeeded(), batch.failed());
     println!("\n{succeeded} succeeded, {failed} failed.");
     if failed > 0 {

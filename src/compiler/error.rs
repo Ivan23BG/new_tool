@@ -34,6 +34,16 @@ pub enum CompileError {
         second: PathBuf,
         directory: PathBuf,
     },
+    #[error("theme '{theme}' is not enabled (enabled themes: {enabled}); see themes.enabled")]
+    ThemeNotEnabled { theme: String, enabled: String },
+    #[error("no themes are enabled (themes.enabled is empty), so --theme cannot be used")]
+    ThemesDisabled,
+    #[error("could not write '{path}': {source}")]
+    Publish {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
     #[error("could not start the compilation worker pool: {0}")]
     WorkerPool(String),
     #[error("LaTeX document not found: '{0}'")]

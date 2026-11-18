@@ -182,14 +182,6 @@ fn incremental_rebuild_is_not_forced() {
     assert!(String::from_utf8_lossy(&forced.stdout).contains(" -g "));
 }
 
-#[test]
-fn theme_flag_is_rejected_until_it_is_implemented() {
-    let dir = tempdir().unwrap();
-    let output = run(dir.path(), &["compile", "--theme", "dark"]);
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--theme"));
-}
-
 fn project_with_documents(root: &Path, good: usize, bad: usize) -> std::path::PathBuf {
     let project = root.join("project");
     fs::create_dir_all(project.join("src/modules")).unwrap();
@@ -241,7 +233,7 @@ fn parallel_batch_reports_every_document_and_keeps_blocks_intact() {
     assert!(block[0].contains("Undefined control sequence"), "{block:?}");
     assert!(block[1].trim_start().starts_with("l."), "{block:?}");
     assert!(
-        block[2].contains("full log: build/bad0_main/bad0_main.log"),
+        block[2].contains("full log: logs/bad0_main.log"),
         "{block:?}"
     );
     assert!(
@@ -292,4 +284,147 @@ fn colliding_flat_output_directories_are_refused() {
         !project.join("build").exists(),
         "nothing may be built after a collision"
     );
+}
+
+fn pdf_text(pdf: &Path) -> Option<String> {
+    let output = Command::new("pdftotext").arg(pdf).arg("-").output().ok()?;
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn themed_document() -> String {
+    "\\documentclass{article}\\providecommand{\\lhtheme}{light}\\begin{document}Theme:\\lhtheme\\end{document}".to_string()
+}
+
+#[test]
+fn successful_builds_are_published_to_pdfs_and_logs() {
+    if !latexmk_available() {
+        return;
+    }
+    let dir = tempdir().unwrap();
+    let project = project_with_documents(dir.path(), 2, 0);
+
+    let output = run(dir.path(), &["compile", project.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stdout}");
+    assert!(
+        stdout.contains("SUCCESS") && stdout.contains("pdfs/doc0_main.pdf"),
+        "{stdout}"
+    );
+    assert!(project.join("pdfs/doc0_main.pdf").is_file());
+    assert!(project.join("pdfs/modules/doc1_main.pdf").is_file());
+    assert!(project.join("pdfs/modules/doc1_main.synctex.gz").is_file());
+    assert!(project.join("logs/doc0_main.log").is_file());
+    assert!(project.join("logs/modules/doc1_main.log").is_file());
+    assert!(
+        !project.join("src/doc0_main.pdf").exists(),
+        "src/ must stay clean"
+    );
+}
+
+#[test]
+fn a_failed_rebuild_keeps_the_last_good_pdf_and_refreshes_the_log() {
+    if !latexmk_available() {
+        return;
+    }
+    let dir = tempdir().unwrap();
+    let project = dir.path().join("project");
+    fs::create_dir_all(project.join("src")).unwrap();
+    let source = project.join("src/main.tex");
+    fs::write(&source, document("Good")).unwrap();
+    assert!(
+        run(dir.path(), &["compile", project.to_str().unwrap()])
+            .status
+            .success()
+    );
+    let good_pdf = fs::read(project.join("pdfs/main.pdf")).unwrap();
+
+    fs::write(&source, document("\\undefinedcommand")).unwrap();
+    let output = run(dir.path(), &["compile", project.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(fs::read(project.join("pdfs/main.pdf")).unwrap(), good_pdf);
+    let log = fs::read_to_string(project.join("logs/main.log")).unwrap();
+    assert!(
+        log.contains("Undefined control sequence"),
+        "log should describe the new failure"
+    );
+}
+
+#[test]
+fn theme_all_builds_light_and_dark_with_distinct_outputs() {
+    if !latexmk_available() {
+        return;
+    }
+    let dir = tempdir().unwrap();
+    let project = dir.path().join("project");
+    fs::create_dir_all(project.join("src")).unwrap();
+    fs::write(project.join("src/main.tex"), themed_document()).unwrap();
+
+    let output = run(
+        dir.path(),
+        &["compile", project.to_str().unwrap(), "--theme", "all"],
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{stdout}");
+    assert!(stdout.contains("1 documents x 2 themes"), "{stdout}");
+    assert!(stdout.contains("main.tex [dark]"), "{stdout}");
+    assert!(project.join("build/main/main.pdf").is_file());
+    assert!(project.join("build/main-dark/main.pdf").is_file());
+    if let (Some(light), Some(dark)) = (
+        pdf_text(&project.join("pdfs/main.pdf")),
+        pdf_text(&project.join("pdfs/main-dark.pdf")),
+    ) {
+        assert!(light.contains("Theme:light"), "{light}");
+        assert!(dark.contains("Theme:dark"), "{dark}");
+    }
+    assert!(project.join("logs/main-dark.log").is_file());
+}
+
+#[test]
+fn plain_compile_uses_the_configured_default_theme() {
+    if !latexmk_available() {
+        return;
+    }
+    let dir = tempdir().unwrap();
+    let project = dir.path().join("project");
+    fs::create_dir_all(project.join("src")).unwrap();
+    fs::write(project.join("src/main.tex"), themed_document()).unwrap();
+    fs::write(
+        project.join("latex_handler.toml"),
+        "[themes]\ndefault = \"dark\"\n",
+    )
+    .unwrap();
+
+    assert!(
+        run(dir.path(), &["compile", project.to_str().unwrap()])
+            .status
+            .success()
+    );
+    if let Some(text) = pdf_text(&project.join("pdfs/main.pdf")) {
+        assert!(text.contains("Theme:dark"), "{text}");
+    }
+}
+
+#[test]
+fn disabled_theme_is_rejected_with_the_enabled_list() {
+    let dir = tempdir().unwrap();
+    let project = dir.path().join("project");
+    fs::create_dir_all(project.join("src")).unwrap();
+    fs::write(project.join("src/main.tex"), document("x")).unwrap();
+    fs::write(
+        project.join("latex_handler.toml"),
+        "[themes]\nenabled = [\"light\"]\n",
+    )
+    .unwrap();
+
+    let output = run(
+        dir.path(),
+        &["compile", project.to_str().unwrap(), "--theme", "dark"],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("theme 'dark' is not enabled") && stderr.contains("light"),
+        "{stderr}"
+    );
+    assert!(!project.join("build").exists());
 }

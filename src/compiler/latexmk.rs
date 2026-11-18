@@ -29,7 +29,7 @@ pub fn engine_name(engine: LatexEngine) -> &'static str {
     }
 }
 
-pub(super) fn theme_name(theme: ThemeVariant) -> &'static str {
+pub fn theme_name(theme: ThemeVariant) -> &'static str {
     match theme {
         ThemeVariant::Light => "light",
         ThemeVariant::Dark => "dark",
