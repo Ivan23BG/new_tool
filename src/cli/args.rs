@@ -182,6 +182,29 @@ pub enum ProjectCommand {
 
     /// Compare a project with its source template and optionally apply updates.
     Sync(SyncArgs),
+
+    /// Inspect or initialize the project's Git repository.
+    Git {
+        #[command(subcommand)]
+        command: GitCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GitCommand {
+    /// Show branch and changed files of a project.
+    Status {
+        /// Project directory. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+
+    /// Initialize a Git repository in the project directory.
+    Init {
+        /// Project directory. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -482,6 +505,22 @@ mod tests {
                 })
             } if path == std::path::Path::new("./thesis")
         ));
+    }
+
+    #[test]
+    fn parses_project_git_status() {
+        let cli = Cli::try_parse_from(["latex_handler", "project", "git", "status", "./thesis"])
+            .expect("project git status arguments should parse");
+        let super::Command::Project {
+            command:
+                super::ProjectCommand::Git {
+                    command: super::GitCommand::Status { path },
+                },
+        } = cli.command
+        else {
+            panic!("expected the project git status command");
+        };
+        assert_eq!(path, PathBuf::from("./thesis"));
     }
 
     #[test]

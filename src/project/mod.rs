@@ -4,6 +4,7 @@ mod clean;
 mod creation;
 mod discovery;
 mod error;
+mod git;
 mod snapshot;
 mod status;
 mod sync;
@@ -17,6 +18,7 @@ pub use clean::{CleanError, CleanSelection, clean_project, plan_clean};
 pub use creation::{create_project, initialize_project, set_template_version};
 pub use discovery::{DiscoveredDocument, discover_documents};
 pub use error::ProjectError;
+pub use git::{ChangeKind, GitChange, GitError, GitStatus, init, status};
 pub use snapshot::{
     PROJECT_SNAPSHOT_FILE, ProjectSnapshot, ResourceRecord, ResourceState, SNAPSHOT_FORMAT_VERSION,
     SnapshotError, fingerprint_bytes, key_path, path_key,

@@ -1,5 +1,5 @@
 use super::args::{
-    CleanArgs, Command, CompileArgs, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs,
+    CleanArgs, Command, CompileArgs, ConfigCommand, ConfigScopeArgs, GitCommand, InitArgs, NewArgs,
     ProjectCommand, ProjectTemplateCommand, SyncArgs, TemplateCommand, Theme,
 };
 use crate::compiler::{
@@ -11,8 +11,8 @@ use crate::config::ThemeVariant;
 use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{
     CleanSelection, ConflictPolicy, KeepReason, Project, SyncAction, ValidationSeverity,
-    apply_sync, clean_project, create_project, directory_bytes, initialize_project, plan_clean,
-    plan_sync, set_template_version,
+    apply_sync, clean_project, create_project, directory_bytes, init, initialize_project,
+    plan_clean, plan_sync, set_template_version, status,
 };
 use crate::template::{
     TemplateRegistry, install_template_with_dependencies, list_template_versions, remove_template,
@@ -349,6 +349,7 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
         ProjectCommand::Pdfs { path, open } => execute_project_pdfs(path, open)?,
         ProjectCommand::Template { command } => execute_project_template(command, &store)?,
         ProjectCommand::Sync(args) => execute_project_sync(args, &store)?,
+        ProjectCommand::Git { command } => execute_project_git(command)?,
     }
     Ok(())
 }
@@ -673,6 +674,43 @@ fn execute_project_status(path: PathBuf) -> Result<(), Box<dyn Error + Send + Sy
     for path in planned {
         let relative = path.strip_prefix(project.root()).unwrap_or(&path);
         println!("  Would remove {}", relative.display());
+    }
+    Ok(())
+}
+
+fn execute_project_git(command: GitCommand) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = ConfigStore::user_default()?;
+    match command {
+        GitCommand::Status { path } => {
+            let project = Project::discover(&path, &store)?;
+            let state = status(project.root())?;
+            println!("Project: {}", project.root().display());
+            println!("Git repository: {}", state.is_repository);
+            if state.is_repository {
+                println!(
+                    "Branch: {}",
+                    state.branch.as_deref().unwrap_or("(detached)")
+                );
+                println!("Clean: {}", state.clean);
+                for change in &state.changes {
+                    println!("  {:<10} {}", change.kind.label(), change.path.display());
+                }
+            } else {
+                println!("No Git repository found; Git integration is optional.");
+            }
+        }
+        GitCommand::Init { path } => {
+            let project = Project::discover(&path, &store)?;
+            let root = project.root().to_path_buf();
+            if status(&root)?.is_repository {
+                return Err(std::io::Error::other(
+                    "the directory is already inside a git repository",
+                )
+                .into());
+            }
+            init(&root)?;
+            println!("Initialized git repository at {}", root.display());
+        }
     }
     Ok(())
 }

@@ -51,7 +51,7 @@ Available commands:
 new       Create a new project from an installed template
 init      Initialize latex_handler in an existing directory
 compile   Compile one or more LaTeX documents
-project   Inspect and validate a project (info, validate, status, list, pdfs, template, sync)
+project   Inspect, maintain, and validate a project (info, validate, status, list, pdfs, git, template, sync)
 template  Manage installed project templates
 config    Inspect and modify configuration
 clean     Remove generated build artifacts
@@ -295,6 +295,26 @@ The report includes:
 - the size of the generated files under the configured build, log, and PDF
   directories,
 - a clean preview listing what a default clean would remove.
+
+## Git integration
+
+Git integration is optional and lives under the `project git` command group.
+
+```sh
+latex_handler project git status ./thesis
+latex_handler project git init ./thesis
+```
+
+`project git status` detects whether the project is inside a Git working tree
+and reports the branch, whether the working tree is clean, and the changed
+files (added, modified, deleted, renamed, untracked, or unmerged).
+
+`project git init` initializes a Git repository in the project directory; it
+refuses when the directory already belongs to a repository.
+
+Git never runs automatically and is not required for creating, compiling, or
+synchronizing projects. No Git command is executed for projects outside a
+repository.
 
 ## Updating latex_handler
 
