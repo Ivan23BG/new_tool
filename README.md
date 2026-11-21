@@ -216,6 +216,34 @@ latex_handler template remove university
 `template update` updates installed templates to their latest stable release or
 to an explicit version; prereleases are excluded by default unless configured.
 
+## Template authoring
+
+A template repository publishes a `template.toml` manifest at its root:
+
+```toml
+name = "university"
+version = "1.0.0"
+description = "University thesis template"
+repository = "https://github.com/example/university.git"
+authors = ["Your Name"]
+
+# Optional: directory with reusable resources shared with projects.
+shared_assets = "shared"
+
+# Optional: templates this template depends on.
+[dependencies]
+base = { version = "^1.0", repository = "https://github.com/example/base.git" }
+extra = { version = ">=1.0, <2.0", optional = true }
+```
+
+The manifest requires a valid `name` and a non-empty semantic-version `version`.
+`shared_assets` names a directory that stays in the installed template and is
+exposed to projects through the compilation-time asset search path instead of
+being copied into new projects; it must exist in the installed template.
+
+`dependencies` maps required templates to accepted version requirements
+(for example `^1.2` or `>=1.0, <2.0`); optional dependencies may be skipped.
+
 ## Configuration
 
 Configuration is layered: built-in defaults, global user configuration, project
