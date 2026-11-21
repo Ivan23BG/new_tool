@@ -56,8 +56,13 @@ jobs:
             -Path "target\release\${{ matrix.binary_name }}" `
             -DestinationPath "${{ matrix.archive_name }}"
 
+      - name: Generate checksum
+        run: sha256sum ${{ matrix.archive_name }} > ${{ matrix.archive_name }}.sha256
+
       - name: Upload release archive
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.archive_name }}
+          files: |
+            ${{ matrix.archive_name }}
+            ${{ matrix.archive_name }}.sha256
           generate_release_notes: true
