@@ -155,7 +155,7 @@ fn install_release(version: &str) -> Result<(), SelfUpdateError> {
     fs::create_dir_all(&extract_dir)
         .map_err(|source| SelfUpdateError::Extract(source.to_string()))?;
     let extract = Command::new("tar")
-        .args(["-xzf", &archive_path.to_string_lossy(), "-C"])
+        .args(["-xf", &archive_path.to_string_lossy(), "-C"])
         .arg(&extract_dir)
         .arg(if cfg!(windows) {
             "latex_handler.exe"
