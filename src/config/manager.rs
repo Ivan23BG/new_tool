@@ -173,6 +173,7 @@ fn validate_key(key: &str) -> Result<(), ConfigError> {
         "structure.build",
         "structure.pdf",
         "structure.logs",
+        "structure.assets",
         "discovery.enabled",
         "discovery.patterns",
         "discovery.exclude",

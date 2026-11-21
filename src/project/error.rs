@@ -28,4 +28,6 @@ pub enum ProjectError {
     TemplateNotInstalled { name: String, path: PathBuf },
     #[error("invalid project configuration: {0}")]
     InvalidProjectConfig(String),
+    #[error(transparent)]
+    TemplateManifest(#[from] crate::template::TemplateManifestError),
 }

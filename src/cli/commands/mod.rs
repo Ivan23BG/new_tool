@@ -224,6 +224,17 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
                 "Logs directory: {}",
                 project.config().structure.logs.display()
             );
+            println!(
+                "Assets directory: {}",
+                project.config().structure.assets.display()
+            );
+            println!(
+                "Shared assets: {}",
+                project
+                    .shared_assets_dir()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "(none)".into())
+            );
             println!("Engine: {:?}", project.config().compiler.engine);
             println!(
                 "Template: {}",

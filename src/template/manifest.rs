@@ -80,6 +80,10 @@ pub enum TemplateManifestError {
     },
     #[error("template manifest '{path}' declares an unsafe shared-assets path '{asset_path}'")]
     InvalidSharedAssetsPath { path: PathBuf, asset_path: PathBuf },
+    #[error(
+        "template manifest '{path}' declares shared-assets directory '{asset_path}', but it does not exist or is not a directory"
+    )]
+    MissingSharedAssetsDirectory { path: PathBuf, asset_path: PathBuf },
 }
 
 impl TemplateManifest {
@@ -125,6 +129,12 @@ impl TemplateManifest {
                     asset_path: asset_path.clone(),
                 });
             }
+            if !template_dir.as_ref().join(asset_path).is_dir() {
+                return Err(TemplateManifestError::MissingSharedAssetsDirectory {
+                    path,
+                    asset_path: asset_path.clone(),
+                });
+            }
         }
         for (name, dependency) in &manifest.dependencies {
             let valid_dependency_name = !name.trim().is_empty()
@@ -158,6 +168,13 @@ impl TemplateManifest {
             }
         }
         Ok(manifest)
+    }
+
+    /// Absolute path of this template's shared-assets directory, if declared.
+    pub fn shared_assets_dir(&self, template_dir: impl AsRef<Path>) -> Option<PathBuf> {
+        self.shared_assets
+            .as_ref()
+            .map(|path| template_dir.as_ref().join(path))
     }
 
     pub fn write(&self, template_dir: impl AsRef<Path>) -> Result<(), TemplateManifestError> {
@@ -263,6 +280,38 @@ shared_assets = '..\outside'
         assert!(matches!(
             TemplateManifest::load(dir.path()),
             Err(TemplateManifestError::InvalidSharedAssetsPath { .. })
+        ));
+    }
+
+    #[test]
+    fn resolves_declared_shared_assets_directory() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("shared")).unwrap();
+        fs::write(
+            dir.path().join(TEMPLATE_MANIFEST_FILE),
+            "name = 'university'\nversion = '1.0.0'\nshared_assets = 'shared'\n",
+        )
+        .unwrap();
+
+        let manifest = TemplateManifest::load(dir.path()).unwrap();
+        assert_eq!(
+            manifest.shared_assets_dir(dir.path()),
+            Some(dir.path().join("shared"))
+        );
+    }
+
+    #[test]
+    fn rejects_missing_shared_assets_directory() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(TEMPLATE_MANIFEST_FILE),
+            "name = 'university'\nversion = '1.0.0'\nshared_assets = 'missing'\n",
+        )
+        .unwrap();
+
+        assert!(matches!(
+            TemplateManifest::load(dir.path()),
+            Err(TemplateManifestError::MissingSharedAssetsDirectory { .. })
         ));
     }
 

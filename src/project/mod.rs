@@ -6,6 +6,7 @@ mod error;
 mod validation;
 
 use crate::config::{ConfigStore, ResolvedConfig};
+use crate::template::{TEMPLATE_MANIFEST_FILE, TemplateManifest};
 use std::path::{Path, PathBuf};
 
 pub use creation::{create_project, initialize_project, set_template_version};
@@ -19,6 +20,8 @@ pub struct Project {
     root: PathBuf,
     config_path: PathBuf,
     config: ResolvedConfig,
+    /// Shared-assets directory of the installed source template, when present.
+    shared_assets: Option<PathBuf>,
 }
 
 impl Project {
@@ -55,10 +58,12 @@ impl Project {
 
         let config_path = ConfigStore::project_config_path(&root);
         let config = store.load_resolved(&root, overrides)?;
+        let shared_assets = resolve_shared_assets(store, config.project.template.as_deref())?;
         Ok(Self {
             root,
             config_path,
             config,
+            shared_assets,
         })
     }
 
@@ -123,6 +128,32 @@ impl Project {
         }
     }
 
+    /// Project-local assets directory. It need not exist yet.
+    pub fn assets_dir(&self) -> PathBuf {
+        self.root.join(&self.config.structure.assets)
+    }
+
+    /// Shared-assets directory declared by the installed source template.
+    pub fn shared_assets_dir(&self) -> Option<&Path> {
+        self.shared_assets.as_deref()
+    }
+
+    /// Directories that should be searched for project assets, local first.
+    /// Non-existent directories are omitted.
+    pub fn asset_directories(&self) -> Vec<PathBuf> {
+        let mut directories = Vec::new();
+        let local = self.assets_dir();
+        if local.is_dir() {
+            directories.push(local);
+        }
+        if let Some(shared) = &self.shared_assets {
+            if shared.is_dir() {
+                directories.push(shared.clone());
+            }
+        }
+        directories
+    }
+
     pub fn documents(&self) -> Result<Vec<DiscoveredDocument>, ProjectError> {
         discover_documents(self)
     }
@@ -130,6 +161,21 @@ impl Project {
     pub fn validate(&self) -> ProjectValidation {
         validate_project(self)
     }
+}
+
+fn resolve_shared_assets(
+    store: &ConfigStore,
+    template: Option<&str>,
+) -> Result<Option<PathBuf>, ProjectError> {
+    let Some(template) = template else {
+        return Ok(None);
+    };
+    let directory = store.templates_dir().join(template);
+    if !directory.join(TEMPLATE_MANIFEST_FILE).is_file() {
+        return Ok(None);
+    }
+    let manifest = TemplateManifest::load(&directory)?;
+    Ok(manifest.shared_assets_dir(&directory))
 }
 
 #[cfg(test)]

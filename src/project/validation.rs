@@ -43,6 +43,7 @@ pub fn validate_project(project: &Project) -> ProjectValidation {
         ("build", &config.structure.build),
         ("PDF", &config.structure.pdf),
         ("logs", &config.structure.logs),
+        ("assets", &config.structure.assets),
     ] {
         if path.is_absolute() {
             report.issues.push(ValidationIssue {

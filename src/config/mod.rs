@@ -79,7 +79,7 @@ impl Config {
         }
 
         section!(project, ProjectConfig, { name, template, template_version });
-        section!(structure, StructureConfig, { source, build, pdf, logs });
+        section!(structure, StructureConfig, { source, build, pdf, logs, assets });
         section!(discovery, DiscoveryConfig, { enabled, patterns, exclude });
         section!(compiler, CompilerConfig, {
             backend, engine, shell_escape, synctex, interaction, halt_on_error,
@@ -124,6 +124,9 @@ pub struct StructureConfig {
     pub pdf: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logs: Option<PathBuf>,
+    /// Project-local directory for assets (images, bibliography, shared snippets).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assets: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -251,6 +251,9 @@ const PROJECT_CONFIG_TEMPLATE: &str = r#"# latex_handler project configuration
 # pdf = "pdfs"
 # Default: "logs"
 # logs = "logs"
+# Project-local assets (images, bibliography, shared snippets).
+# Default: "assets"
+# assets = "assets"
 
 [discovery]
 # Automatically search for main TeX documents.

@@ -17,6 +17,7 @@ pub fn built_in_defaults() -> Config {
             build: Some(PathBuf::from("build")),
             pdf: Some(PathBuf::from("pdfs")),
             logs: Some(PathBuf::from("logs")),
+            assets: Some(PathBuf::from("assets")),
         }),
         discovery: Some(DiscoveryConfig {
             enabled: Some(true),
@@ -74,6 +75,7 @@ mod tests {
         assert_eq!(structure.build.unwrap(), PathBuf::from("build"));
         assert_eq!(structure.pdf.unwrap(), PathBuf::from("pdfs"));
         assert_eq!(structure.logs.unwrap(), PathBuf::from("logs"));
+        assert_eq!(structure.assets.unwrap(), PathBuf::from("assets"));
     }
 
     #[test]

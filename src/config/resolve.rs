@@ -33,6 +33,7 @@ pub struct ResolvedStructureConfig {
     pub build: PathBuf,
     pub pdf: PathBuf,
     pub logs: PathBuf,
+    pub assets: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -118,6 +119,7 @@ impl ResolvedConfig {
                 build: structure.build.unwrap_or_else(|| PathBuf::from("build")),
                 pdf: structure.pdf.unwrap_or_else(|| PathBuf::from("pdfs")),
                 logs: structure.logs.unwrap_or_else(|| PathBuf::from("logs")),
+                assets: structure.assets.unwrap_or_else(|| PathBuf::from("assets")),
             },
             discovery: ResolvedDiscoveryConfig {
                 enabled: discovery.enabled.unwrap_or(true),

@@ -2,8 +2,9 @@
 
 use super::{Project, ProjectError};
 use crate::config::ConfigStore;
+use crate::template::{TEMPLATE_MANIFEST_FILE, TemplateManifest};
 use std::fs;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 use toml_edit::{DocumentMut, value};
 use walkdir::WalkDir;
 
@@ -56,6 +57,7 @@ pub fn initialize_project(
         &config.structure.build,
         &config.structure.pdf,
         &config.structure.logs,
+        &config.structure.assets,
     ] {
         let directory = root.join(relative);
         fs::create_dir_all(&directory).map_err(|source| ProjectError::Path {
@@ -121,7 +123,8 @@ pub fn create_project(
     })?;
 
     let result = (|| {
-        copy_template(&template_root, &destination)?;
+        let shared_assets = template_shared_assets(&template_root)?;
+        copy_template(&template_root, &destination, shared_assets.as_deref())?;
         initialize_project(&destination, store, Some(&selected_template))
     })();
 
@@ -170,7 +173,19 @@ pub fn set_template_version(
     Project::load(project.root(), store)
 }
 
-fn copy_template(source: &Path, destination: &Path) -> Result<(), ProjectError> {
+fn template_shared_assets(template_root: &Path) -> Result<Option<PathBuf>, ProjectError> {
+    if !template_root.join(TEMPLATE_MANIFEST_FILE).is_file() {
+        return Ok(None);
+    }
+    let manifest = TemplateManifest::load(template_root)?;
+    Ok(manifest.shared_assets)
+}
+
+fn copy_template(
+    source: &Path,
+    destination: &Path,
+    excluded: Option<&Path>,
+) -> Result<(), ProjectError> {
     for entry in WalkDir::new(source).min_depth(1).sort_by_file_name() {
         let entry = entry?;
         let relative = entry
@@ -181,6 +196,11 @@ fn copy_template(source: &Path, destination: &Path) -> Result<(), ProjectError> 
             .components()
             .any(|component| component == Component::Normal(std::ffi::OsStr::new(".git")))
         {
+            continue;
+        }
+        // Shared assets stay in the installed template and are exposed to
+        // projects through the asset search path instead of being copied.
+        if excluded.is_some_and(|excluded| relative.starts_with(excluded)) {
             continue;
         }
         // Do not copy symlinks: templates must not write outside their own tree.
@@ -251,6 +271,7 @@ mod tests {
         assert!(dir.path().join("build").is_dir());
         assert!(dir.path().join("pdfs").is_dir());
         assert!(dir.path().join("logs").is_dir());
+        assert!(dir.path().join("assets").is_dir());
         assert_eq!(
             fs::read_to_string(dir.path().join("main.tex")).unwrap(),
             "existing content"
@@ -302,6 +323,56 @@ mod tests {
             project.config().project.template.as_deref(),
             Some("university")
         );
+    }
+
+    #[test]
+    fn new_skips_shared_assets_and_creates_a_local_assets_directory() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config"));
+        let template = store.config_dir().join("templates/university");
+        fs::create_dir_all(template.join("src")).unwrap();
+        fs::create_dir_all(template.join("shared")).unwrap();
+        fs::create_dir_all(template.join("assets")).unwrap();
+        fs::write(
+            template.join("template.toml"),
+            "name = 'university'\nversion = '1.0.0'\nshared_assets = 'shared'\n",
+        )
+        .unwrap();
+        fs::write(template.join("src/main.tex"), "template document").unwrap();
+        fs::write(template.join("shared/branding.tex"), "shared asset").unwrap();
+        fs::write(template.join("assets/local.tex"), "local asset").unwrap();
+
+        let project = create_project("thesis", dir.path(), Some("university"), &store).unwrap();
+
+        assert!(!project.root().join("shared").exists());
+        assert_eq!(
+            fs::read_to_string(project.root().join("assets/local.tex")).unwrap(),
+            "local asset"
+        );
+        assert_eq!(
+            project.shared_assets_dir(),
+            Some(template.join("shared").as_path())
+        );
+        assert_eq!(
+            project.asset_directories(),
+            vec![project.assets_dir(), template.join("shared")]
+        );
+    }
+
+    #[test]
+    fn configured_project_assets_directory_is_created_by_init() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config"));
+        fs::write(
+            dir.path().join("latex_handler.toml"),
+            "[structure]\nassets = 'media'\n",
+        )
+        .unwrap();
+
+        let project = initialize_project(dir.path(), &store, None).unwrap();
+
+        assert!(dir.path().join("media").is_dir());
+        assert_eq!(project.assets_dir(), dir.path().join("media"));
     }
 
     #[test]
