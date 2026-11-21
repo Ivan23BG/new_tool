@@ -1,6 +1,6 @@
 use super::args::{
     CleanArgs, Command, CompileArgs, ConfigCommand, ConfigScopeArgs, GitCommand, InitArgs, NewArgs,
-    ProjectCommand, ProjectTemplateCommand, SyncArgs, TemplateCommand, Theme,
+    ProjectCommand, ProjectTemplateCommand, SelfUpdateArgs, SyncArgs, TemplateCommand, Theme,
 };
 use crate::compiler::{
     CompileOutcome, Compiler, DocumentResult, PdfStatus, ThemeSelection, compile_documents,
@@ -36,6 +36,7 @@ pub fn execute(command: Command, verbose: bool) -> Result<(), Box<dyn Error + Se
             name: None,
             version: None,
         }),
+        Command::SelfUpdate(args) => execute_self_update(args),
         Command::Version => {
             println!("latex_handler {}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -196,6 +197,28 @@ fn clean_selection(args: &CleanArgs) -> CleanSelection {
     } else {
         CleanSelection::default()
     }
+}
+
+fn execute_self_update(args: SelfUpdateArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let result = crate::self_update::self_update(args.check)?;
+    println!("Current version: {}", result.current_version);
+    println!(
+        "Latest version: {}",
+        result.latest_version.as_deref().unwrap_or("(none)")
+    );
+    if args.check {
+        println!("Check complete.");
+        return Ok(());
+    }
+    if result.updated {
+        println!(
+            "Updated latex_handler to {}.",
+            result.latest_version.unwrap_or_default()
+        );
+    } else {
+        println!("latex_handler is already up to date.");
+    }
+    Ok(())
 }
 
 fn execute_config(command: ConfigCommand) -> Result<(), Box<dyn Error + Send + Sync>> {

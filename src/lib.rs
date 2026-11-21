@@ -8,4 +8,5 @@ pub mod cli;
 pub mod compiler;
 pub mod config;
 pub mod project;
+pub mod self_update;
 pub mod template;

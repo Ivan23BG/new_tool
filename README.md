@@ -56,7 +56,9 @@ template  Manage installed project templates
 config    Inspect and modify configuration
 clean     Remove generated build artifacts
 update    Update all installed templates
+self-update  Update the latex_handler binary from the latest GitHub release
 version   Display the installed version
+help      Print this message or the help of the given subcommand(s)
 ```
 
 ## Quick start
@@ -319,8 +321,24 @@ repository.
 ## Updating latex_handler
 
 `latex_handler update` updates all installed templates to their latest stable
-release; it does not update the `latex_handler` binary itself. To upgrade the
-binary, reinstall it from the release or package manager you used.
+release; it does not update the `latex_handler` binary itself.
+
+```sh
+latex_handler self-update --check
+latex_handler self-update
+```
+
+`latex_handler self-update` downloads the release archive for the current
+platform from the GitHub releases of the `latex_handler` repository, replaces
+the running binary, and reports whether an update was installed. The `--check`
+flag only compares the installed version with the latest published release.
+
+Binary self-update is best effort: it uses the `git`, `curl`, and `tar` commands
+and never installs an archive it could not download and extract. Updates are
+explicitly initiated; there is no background or automatic update behavior.
+
+To upgrade the binary through a package manager or by reinstalling it from the
+release, use those channels instead.
 
 ## Development
 

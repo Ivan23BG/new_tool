@@ -57,6 +57,9 @@ pub enum Command {
     /// Update all installed templates (binary self-update is not supported).
     Update,
 
+    /// Update the latex_handler binary from the latest GitHub release.
+    SelfUpdate(SelfUpdateArgs),
+
     /// Display the installed version.
     Version,
 }
@@ -345,6 +348,13 @@ pub struct ConfigScopeArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct SelfUpdateArgs {
+    /// Only check whether a newer release is available.
+    #[arg(long)]
+    pub check: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct CleanArgs {
     /// Project directory. Defaults to the current directory.
     #[arg(default_value = ".")]
@@ -575,6 +585,16 @@ mod tests {
         let result = Cli::try_parse_from(["latex_handler", "clean", ".", "--build", "--logs"]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_self_update_check() {
+        let cli = Cli::try_parse_from(["latex_handler", "self-update", "--check"])
+            .expect("self-update arguments should parse");
+        let super::Command::SelfUpdate(args) = cli.command else {
+            panic!("expected the self-update command");
+        };
+        assert!(args.check);
     }
 
     #[test]
