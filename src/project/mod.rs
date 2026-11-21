@@ -4,6 +4,7 @@ mod creation;
 mod discovery;
 mod error;
 mod snapshot;
+mod sync;
 mod validation;
 
 use crate::config::{ConfigStore, ResolvedConfig};
@@ -16,6 +17,10 @@ pub use error::ProjectError;
 pub use snapshot::{
     PROJECT_SNAPSHOT_FILE, ProjectSnapshot, ResourceRecord, ResourceState, SNAPSHOT_FORMAT_VERSION,
     SnapshotError, fingerprint_bytes, key_path, path_key,
+};
+pub use sync::{
+    ConflictKind, ConflictPolicy, KeepReason, SyncAction, SyncCounts, SyncError, SyncOutcome,
+    SyncPlan, apply_sync, plan_sync,
 };
 pub use validation::{ProjectValidation, ValidationIssue, ValidationSeverity, validate_project};
 

@@ -1,6 +1,6 @@
 use super::args::{
     Command, CompileArgs, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand,
-    ProjectTemplateCommand, TemplateCommand, Theme,
+    ProjectTemplateCommand, SyncArgs, TemplateCommand, Theme,
 };
 use crate::compiler::{
     CompileOutcome, Compiler, DocumentResult, ThemeSelection, compile_documents, engine_name,
@@ -9,7 +9,8 @@ use crate::compiler::{
 use crate::config::ThemeVariant;
 use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{
-    Project, ValidationSeverity, create_project, initialize_project, set_template_version,
+    ConflictPolicy, KeepReason, Project, SyncAction, ValidationSeverity, apply_sync,
+    create_project, initialize_project, plan_sync, set_template_version,
 };
 use crate::template::{
     TemplateRegistry, install_template_with_dependencies, list_template_versions, remove_template,
@@ -298,6 +299,84 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
             }
         }
         ProjectCommand::Template { command } => execute_project_template(command, &store)?,
+        ProjectCommand::Sync(args) => execute_project_sync(args, &store)?,
+    }
+    Ok(())
+}
+
+fn execute_project_sync(
+    args: SyncArgs,
+    store: &ConfigStore,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let project = Project::discover(&args.path, store)?;
+    let registry = TemplateRegistry::new(store.templates_dir());
+    let plan = plan_sync(&project, &registry)?;
+    let counts = plan.counts();
+
+    println!("Project: {}", project.root().display());
+    println!(
+        "Template: {} ({} -> {})",
+        plan.template, plan.from_version, plan.to_version
+    );
+    for action in &plan.actions {
+        match action {
+            SyncAction::Add { path, .. } => println!("  add       {path}"),
+            SyncAction::Update { path, .. } => println!("  update    {path}"),
+            SyncAction::Adopt { path, .. } => {
+                println!("  adopt     {path} (already matches the template)")
+            }
+            SyncAction::Remove { path } => println!("  remove    {path}"),
+            SyncAction::KeepLocal { path, reason } => match reason {
+                KeepReason::LocalModified => println!("  keep      {path} (modified locally)"),
+                KeepReason::TemplateRemovedLocallyModified => {
+                    println!("  keep      {path} (modified locally; removed from the template)")
+                }
+            },
+            SyncAction::KeepDeleted { path } => {
+                println!("  keep      {path} (deleted locally)")
+            }
+            SyncAction::Conflict { path, kind, .. } => {
+                println!("  conflict  {path} ({})", kind.description())
+            }
+            SyncAction::Unchanged { .. } => {}
+        }
+    }
+    if counts.changes() == 0 && counts.conflicts == 0 {
+        println!("Project is up to date.");
+    }
+    println!(
+        "Summary: {} change(s), {} conflict(s), {} unchanged.",
+        counts.changes(),
+        counts.conflicts,
+        counts.unchanged
+    );
+
+    if !args.apply {
+        if counts.conflicts > 0 {
+            println!(
+                "Rerun with --apply to apply safe changes; resolve conflicts with --prefer local|template."
+            );
+        } else if counts.changes() > 0 {
+            println!("Dry run: rerun with --apply to apply these changes.");
+        }
+        return Ok(());
+    }
+
+    let policy = args.prefer.map(Into::into).unwrap_or_default();
+    let outcome = apply_sync(&plan, policy)?;
+    println!(
+        "Applied {} change(s); resolved {} conflict(s).",
+        outcome.applied, outcome.resolved
+    );
+    if outcome.conflicts_remaining > 0 {
+        return Err(std::io::Error::other(format!(
+            "{} conflict(s) remain; rerun with --apply --prefer local or --prefer template",
+            outcome.conflicts_remaining
+        ))
+        .into());
+    }
+    if policy == ConflictPolicy::PreferTemplate && outcome.resolved > 0 {
+        println!("Template versions replaced local files for resolved conflicts.");
     }
     Ok(())
 }

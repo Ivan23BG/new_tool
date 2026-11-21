@@ -156,6 +156,42 @@ pub enum ProjectCommand {
         #[command(subcommand)]
         command: ProjectTemplateCommand,
     },
+
+    /// Compare a project with its source template and optionally apply updates.
+    Sync(SyncArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct SyncArgs {
+    /// Project directory. Defaults to the current directory.
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Apply safe changes. Without this flag, only a plan is printed.
+    #[arg(long)]
+    pub apply: bool,
+
+    /// How to resolve files changed both locally and in the template.
+    /// Requires --apply.
+    #[arg(long, value_enum, requires = "apply")]
+    pub prefer: Option<ConflictPreference>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ConflictPreference {
+    /// Keep the project's file and move the baseline to the template version.
+    Local,
+    /// Replace the project's file with the template version.
+    Template,
+}
+
+impl From<ConflictPreference> for crate::project::ConflictPolicy {
+    fn from(preference: ConflictPreference) -> Self {
+        match preference {
+            ConflictPreference::Local => Self::PreferLocal,
+            ConflictPreference::Template => Self::PreferTemplate,
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -395,6 +431,43 @@ mod tests {
         ])
         .expect("config set arguments should parse");
         assert!(matches!(cli.command, super::Command::Config { .. }));
+    }
+
+    #[test]
+    fn parses_project_sync_with_apply_and_conflict_preference() {
+        let cli = Cli::try_parse_from([
+            "latex_handler",
+            "project",
+            "sync",
+            "./thesis",
+            "--apply",
+            "--prefer",
+            "local",
+        ])
+        .expect("project sync arguments should parse");
+        assert!(matches!(
+            cli.command,
+            super::Command::Project {
+                command: super::ProjectCommand::Sync(super::SyncArgs {
+                    path,
+                    apply: true,
+                    prefer: Some(super::ConflictPreference::Local),
+                })
+            } if path == std::path::Path::new("./thesis")
+        ));
+    }
+
+    #[test]
+    fn project_sync_prefers_requires_apply() {
+        let result = Cli::try_parse_from([
+            "latex_handler",
+            "project",
+            "sync",
+            ".",
+            "--prefer",
+            "template",
+        ]);
+        assert!(result.is_err(), "--prefer without --apply must be rejected");
     }
 
     #[test]
