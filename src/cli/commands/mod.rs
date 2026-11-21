@@ -10,7 +10,8 @@ use crate::config::ThemeVariant;
 use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{
     CleanSelection, ConflictPolicy, KeepReason, Project, SyncAction, ValidationSeverity,
-    apply_sync, clean_project, create_project, initialize_project, plan_sync, set_template_version,
+    apply_sync, clean_project, create_project, initialize_project, plan_clean, plan_sync,
+    set_template_version,
 };
 use crate::template::{
     TemplateRegistry, install_template_with_dependencies, list_template_versions, remove_template,
@@ -148,16 +149,12 @@ fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error
 
 fn execute_clean(args: CleanArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
     let store = ConfigStore::user_default()?;
-    let project = Project::discover(args.path, &store)?;
-    let selection = if args.all {
-        CleanSelection::all()
-    } else if args.build {
-        CleanSelection::build()
-    } else if args.logs {
-        CleanSelection::logs()
-    } else {
-        CleanSelection::default()
-    };
+    let project = Project::discover(&args.path, &store)?;
+    let selection = clean_selection(&args);
+
+    if args.dry_run {
+        return execute_clean_dry_run(&project, &selection);
+    }
 
     let removed = clean_project(&project, selection)?;
     if removed.is_empty() {
@@ -169,6 +166,35 @@ fn execute_clean(args: CleanArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
         println!("Removed {}", relative.display());
     }
     Ok(())
+}
+
+fn execute_clean_dry_run(
+    project: &Project,
+    selection: &CleanSelection,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let planned = plan_clean(project, *selection)?;
+    if planned.is_empty() {
+        println!("Nothing to clean.");
+        return Ok(());
+    }
+    for path in planned {
+        let relative = path.strip_prefix(project.root()).unwrap_or(&path);
+        println!("Would remove {}", relative.display());
+    }
+    println!("Dry run: no files were changed.");
+    Ok(())
+}
+
+fn clean_selection(args: &CleanArgs) -> CleanSelection {
+    if args.all {
+        CleanSelection::all()
+    } else if args.build {
+        CleanSelection::build()
+    } else if args.logs {
+        CleanSelection::logs()
+    } else {
+        CleanSelection::default()
+    }
 }
 
 fn execute_config(command: ConfigCommand) -> Result<(), Box<dyn Error + Send + Sync>> {

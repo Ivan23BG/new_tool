@@ -86,21 +86,8 @@ pub fn clean_project(
     project: &Project,
     selection: CleanSelection,
 ) -> Result<Vec<PathBuf>, CleanError> {
-    let structure = &project.config().structure;
-    let mut targets = Vec::new();
-    if selection.build {
-        targets.push(("build", structure.build.as_path()));
-    }
-    if selection.logs {
-        targets.push(("logs", structure.logs.as_path()));
-    }
-    if selection.pdfs {
-        targets.push(("PDF", structure.pdf.as_path()));
-    }
-
     let mut removed = Vec::new();
-    for (label, relative) in targets {
-        let target = safe_target(project, label, relative)?;
+    for (label, target) in clean_targets(project, selection)? {
         match fs::symlink_metadata(&target) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 return Err(CleanError::UnsafeTarget {
@@ -132,6 +119,69 @@ pub fn clean_project(
         }
     }
     Ok(removed)
+}
+
+/// Plan which generated directories a clean would remove, without touching
+/// the filesystem.
+///
+/// Safety checks still run, so unsafe or invalid targets are reported even in
+/// dry-run mode. Missing directories are skipped; only directories that exist
+/// are planned for removal.
+pub fn plan_clean(
+    project: &Project,
+    selection: CleanSelection,
+) -> Result<Vec<PathBuf>, CleanError> {
+    let mut planned = Vec::new();
+    for (label, target) in clean_targets(project, selection)? {
+        match fs::symlink_metadata(&target) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(CleanError::UnsafeTarget {
+                    label,
+                    path: target,
+                    reason: "symbolic links are not followed",
+                });
+            }
+            Ok(metadata) if !metadata.is_dir() => {
+                return Err(CleanError::NotDirectory {
+                    label,
+                    path: target,
+                });
+            }
+            Ok(_) => planned.push(target),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(source) => {
+                return Err(CleanError::Io {
+                    path: target,
+                    source,
+                });
+            }
+        }
+    }
+    Ok(planned)
+}
+
+/// Resolve the generated directories selected by `selection` and enforce the
+/// safety checks that [`clean_project`] relies on.
+fn clean_targets(
+    project: &Project,
+    selection: CleanSelection,
+) -> Result<Vec<(&'static str, PathBuf)>, CleanError> {
+    let structure = &project.config().structure;
+    let mut targets = Vec::new();
+    if selection.build {
+        targets.push(("build", structure.build.clone()));
+    }
+    if selection.logs {
+        targets.push(("logs", structure.logs.clone()));
+    }
+    if selection.pdfs {
+        targets.push(("PDF", structure.pdf.clone()));
+    }
+    let mut resolved = Vec::new();
+    for (label, relative) in targets {
+        resolved.push((label, safe_target(project, label, &relative)?));
+    }
+    Ok(resolved)
 }
 
 /// Resolve a configured directory and reject targets that could delete user
@@ -244,6 +294,64 @@ mod tests {
         let removed = clean_project(&project, CleanSelection::all()).unwrap();
         assert!(removed.is_empty());
         assert!(dir.path().join("src/main.tex").is_file());
+    }
+
+    #[test]
+    fn plan_clean_lists_existing_outputs_without_removing_them() {
+        let (_dir, project) = project("");
+        let planned = plan_clean(&project, CleanSelection::default()).unwrap();
+
+        assert_eq!(planned.len(), 2);
+        assert!(
+            planned
+                .iter()
+                .any(|path| path.ends_with("build") && path.is_dir())
+        );
+        assert!(
+            planned
+                .iter()
+                .any(|path| path.ends_with("logs") && path.is_dir())
+        );
+        // PDFs are preserved by the default selection.
+        assert!(!planned.iter().any(|path| path.ends_with("pdfs")));
+        // The plan is read-only: nothing was deleted.
+        assert!(project.root().join("build/doc/main.aux").is_file());
+        assert!(project.root().join("logs/doc/main.log").is_file());
+        assert!(project.root().join("pdfs/doc/main.pdf").is_file());
+    }
+
+    #[test]
+    fn plan_clean_all_includes_the_pdf_directory() {
+        let (_dir, project) = project("");
+        let planned = plan_clean(&project, CleanSelection::all()).unwrap();
+
+        assert_eq!(planned.len(), 3);
+        assert!(planned.iter().any(|path| path.ends_with("pdfs")));
+    }
+
+    #[test]
+    fn plan_clean_skips_missing_directories() {
+        let (_dir, project) = project("");
+        let planned = plan_clean(&project, CleanSelection::all()).unwrap();
+
+        assert_eq!(planned.len(), 3);
+        clean_project(&project, CleanSelection::all()).unwrap();
+        assert!(
+            plan_clean(&project, CleanSelection::all())
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn plan_clean_reports_unsafe_targets_without_removing_them() {
+        let (_dir, project) = project("[structure]\nbuild = 'src'\n");
+
+        assert!(matches!(
+            plan_clean(&project, CleanSelection::build()),
+            Err(CleanError::UnsafeTarget { .. })
+        ));
+        assert!(project.root().join("src/main.tex").is_file());
     }
 
     #[test]

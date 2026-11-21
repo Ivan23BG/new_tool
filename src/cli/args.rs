@@ -50,7 +50,8 @@ pub enum Command {
     /// Remove generated build artifacts.
     ///
     /// By default this removes build intermediates and published logs while
-    /// preserving PDFs. Use `--all` to remove PDFs as well.
+    /// preserving PDFs. Use `--all` to remove PDFs as well. Use `--dry-run` to
+    /// print what would be removed without deleting anything.
     Clean(CleanArgs),
 
     /// Update all installed templates (binary self-update is not supported).
@@ -318,6 +319,10 @@ pub struct CleanArgs {
     /// Remove all generated outputs (build, logs, and PDFs).
     #[arg(long, conflicts_with_all = ["build", "logs"])]
     pub all: bool,
+
+    /// Print what would be removed without deleting anything.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[cfg(test)]
@@ -478,5 +483,23 @@ mod tests {
         let result = Cli::try_parse_from(["latex_handler", "clean", ".", "--build", "--logs"]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn clean_dry_run_parses_and_composes_with_flags() {
+        let dry_run = Cli::try_parse_from(["latex_handler", "clean", "./thesis", "--dry-run"])
+            .expect("clean --dry-run should parse");
+        assert!(matches!(
+            dry_run.command,
+            super::Command::Clean(ref args) if args.dry_run && !args.all && !args.build && !args.logs
+        ));
+
+        let dry_run_all =
+            Cli::try_parse_from(["latex_handler", "clean", "./thesis", "--dry-run", "--all"])
+                .expect("clean --dry-run --all should parse");
+        assert!(matches!(
+            dry_run_all.command,
+            super::Command::Clean(ref args) if args.dry_run && args.all
+        ));
     }
 }

@@ -111,3 +111,34 @@ fn clean_refuses_to_remove_the_source_directory() {
     );
     assert!(project.join("src/main.tex").is_file());
 }
+
+#[test]
+fn clean_dry_run_lists_would_remove_without_deleting() {
+    let dir = tempdir().unwrap();
+    let home = dir.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    let project = project(&home, "");
+
+    let output = clean(&home, &project, &["--dry-run"]);
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let text = stdout(&output);
+    assert!(text.contains("Would remove build"), "{text}");
+    assert!(text.contains("Would remove logs"), "{text}");
+    assert!(text.contains("Dry run: no files were changed."), "{text}");
+    // Dry run is read-only: nothing was deleted.
+    assert!(project.join("build").exists());
+    assert!(project.join("logs/doc/main.log").is_file());
+    assert!(project.join("pdfs/doc/main.pdf").is_file());
+
+    let output = clean(&home, &project, &["--dry-run", "--all"]);
+    assert!(output.status.success());
+    let text = stdout(&output);
+    assert!(text.contains("Would remove pdfs"), "{text}");
+    // Even with --all, the dry run must not delete anything.
+    assert!(project.join("pdfs/doc/main.pdf").is_file());
+}

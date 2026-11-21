@@ -253,6 +253,10 @@ By default, `clean` removes build intermediates and published logs while
 preserving PDFs. `--build` removes only build intermediates; `--logs` removes
 only generated logs; `--all` removes build intermediates, logs, and PDFs.
 
+Use `--dry-run` to print which generated directories would be removed without
+deleting anything. Safety checks still apply, so an unsafe target is reported
+even in dry-run mode.
+
 Clean only removes directories configured under the build/log/PDF settings, and
 refuses paths that would remove the project root, the source directory, or the
 assets directory.

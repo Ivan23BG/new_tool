@@ -12,7 +12,7 @@ use crate::config::{ConfigStore, ResolvedConfig};
 use crate::template::{TEMPLATE_MANIFEST_FILE, TemplateManifest};
 use std::path::{Path, PathBuf};
 
-pub use clean::{CleanError, CleanSelection, clean_project};
+pub use clean::{CleanError, CleanSelection, clean_project, plan_clean};
 pub use creation::{create_project, initialize_project, set_template_version};
 pub use discovery::{DiscoveredDocument, discover_documents};
 pub use error::ProjectError;
