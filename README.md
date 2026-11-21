@@ -25,7 +25,6 @@ Implemented features:
 - Rust stable (edition 2024)
 - A LaTeX distribution and `latexmk` for document compilation
 - Git for template installation and updates
-
 ## Install and build
 
 ```sh
