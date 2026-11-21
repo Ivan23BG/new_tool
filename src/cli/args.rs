@@ -48,9 +48,12 @@ pub enum Command {
     },
 
     /// Remove generated build artifacts.
+    ///
+    /// By default this removes build intermediates and published logs while
+    /// preserving PDFs. Use `--all` to remove PDFs as well.
     Clean(CleanArgs),
 
-    /// Update latex_handler itself.
+    /// Update all installed templates (binary self-update is not supported).
     Update,
 
     /// Display the installed version.

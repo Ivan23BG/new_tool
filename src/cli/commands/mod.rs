@@ -1,6 +1,6 @@
 use super::args::{
-    Command, CompileArgs, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs, ProjectCommand,
-    ProjectTemplateCommand, SyncArgs, TemplateCommand, Theme,
+    CleanArgs, Command, CompileArgs, ConfigCommand, ConfigScopeArgs, InitArgs, NewArgs,
+    ProjectCommand, ProjectTemplateCommand, SyncArgs, TemplateCommand, Theme,
 };
 use crate::compiler::{
     CompileOutcome, Compiler, DocumentResult, ThemeSelection, compile_documents, engine_name,
@@ -9,8 +9,8 @@ use crate::compiler::{
 use crate::config::ThemeVariant;
 use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{
-    ConflictPolicy, KeepReason, Project, SyncAction, ValidationSeverity, apply_sync,
-    create_project, initialize_project, plan_sync, set_template_version,
+    CleanSelection, ConflictPolicy, KeepReason, Project, SyncAction, ValidationSeverity,
+    apply_sync, clean_project, create_project, initialize_project, plan_sync, set_template_version,
 };
 use crate::template::{
     TemplateRegistry, install_template_with_dependencies, list_template_versions, remove_template,
@@ -29,8 +29,11 @@ pub fn execute(command: Command, verbose: bool) -> Result<(), Box<dyn Error + Se
         Command::Project { command } => execute_project(command),
         Command::Template { command } => execute_template(command),
         Command::Config { command } => execute_config(command),
-        Command::Clean(_) => not_implemented("clean"),
-        Command::Update => not_implemented("update"),
+        Command::Clean(args) => execute_clean(args),
+        Command::Update => execute_template(TemplateCommand::Update {
+            name: None,
+            version: None,
+        }),
         Command::Version => {
             println!("latex_handler {}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -143,12 +146,29 @@ fn execute_compile(args: CompileArgs, verbose: bool) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-fn not_implemented(command: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        format!("`{command}` is not implemented yet"),
-    )
-    .into())
+fn execute_clean(args: CleanArgs) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = ConfigStore::user_default()?;
+    let project = Project::discover(args.path, &store)?;
+    let selection = if args.all {
+        CleanSelection::all()
+    } else if args.build {
+        CleanSelection::build()
+    } else if args.logs {
+        CleanSelection::logs()
+    } else {
+        CleanSelection::default()
+    };
+
+    let removed = clean_project(&project, selection)?;
+    if removed.is_empty() {
+        println!("Nothing to clean.");
+        return Ok(());
+    }
+    for path in removed {
+        let relative = path.strip_prefix(project.root()).unwrap_or(&path);
+        println!("Removed {}", relative.display());
+    }
+    Ok(())
 }
 
 fn execute_config(command: ConfigCommand) -> Result<(), Box<dyn Error + Send + Sync>> {
