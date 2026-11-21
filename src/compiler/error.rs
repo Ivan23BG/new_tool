@@ -44,6 +44,8 @@ pub enum CompileError {
         #[source]
         source: io::Error,
     },
+    #[error("could not construct the TEXINPUTS asset search path: {0}")]
+    InvalidAssetPath(#[source] std::env::JoinPathsError),
     #[error("could not start the compilation worker pool: {0}")]
     WorkerPool(String),
     #[error("LaTeX document not found: '{0}'")]

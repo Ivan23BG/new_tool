@@ -225,6 +225,7 @@ pub fn compile_document<R: CommandRunner>(
     let mut request = CompileRequest::new(&job.document.path, output_dir_for(project, job));
     request.force = force;
     request.theme = job.theme;
+    request.asset_paths = project.asset_directories();
     let mut report = compiler.compile(&request)?;
     publish_outputs(project, job, &mut report)?;
     Ok(report)

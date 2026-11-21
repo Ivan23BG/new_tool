@@ -52,6 +52,8 @@ pub struct CompileRequest {
     pub force: bool,
     /// Expose a theme to the document as `\lhtheme`.
     pub theme: Option<ThemeVariant>,
+    /// Directories searched recursively by TeX for assets (local first).
+    pub asset_paths: Vec<PathBuf>,
 }
 
 impl CompileRequest {
@@ -62,6 +64,7 @@ impl CompileRequest {
             engine: None,
             force: false,
             theme: None,
+            asset_paths: Vec::new(),
         }
     }
 }

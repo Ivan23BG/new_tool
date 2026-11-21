@@ -141,6 +141,42 @@ fn theme_is_injected_as_a_pretex_definition() {
 }
 
 #[test]
+fn asset_paths_become_recursive_texinputs() {
+    let (dir, mut request) = project_with_document();
+    let local = dir.path().join("assets");
+    let shared = dir.path().join("shared");
+    fs::create_dir(&local).unwrap();
+    fs::create_dir(&shared).unwrap();
+    request.asset_paths = vec![local.clone(), shared.clone()];
+
+    let spec = Compiler::new(settings()).command_for(&request).unwrap();
+    let value = spec
+        .env
+        .iter()
+        .find(|(key, _)| key == "TEXINPUTS")
+        .map(|(_, value)| value.to_string_lossy().into_owned())
+        .expect("TEXINPUTS should be set");
+
+    assert!(
+        value.starts_with(&format!("{}//", local.display())),
+        "{value}"
+    );
+    assert!(
+        value.contains(&format!("{}//", shared.display())),
+        "{value}"
+    );
+    let separator = if cfg!(windows) { ';' } else { ':' };
+    assert!(value.ends_with(separator), "{value}");
+}
+
+#[test]
+fn no_asset_paths_does_not_override_texinputs() {
+    let (_dir, request) = project_with_document();
+    let spec = Compiler::new(settings()).command_for(&request).unwrap();
+    assert!(spec.env.iter().all(|(key, _)| key != "TEXINPUTS"));
+}
+
+#[test]
 fn invalid_backend_and_interaction_are_rejected() {
     let (_dir, request) = project_with_document();
     let mut configured = settings();

@@ -96,10 +96,33 @@ pub(super) fn build_command(
     }
     args.push(file_name.to_os_string());
 
+    let mut env = Vec::new();
+    if !request.asset_paths.is_empty() {
+        let mut paths: Vec<OsString> = request
+            .asset_paths
+            .iter()
+            .map(|path| {
+                let mut value = path.to_string_lossy().replace('\\', "/");
+                // `//` makes kpathsea search the asset tree recursively.
+                value.push_str("//");
+                OsString::from(value)
+            })
+            .collect();
+        // Preserve a user-provided TEXINPUTS, then the TeX default path.
+        if let Some(existing) = std::env::var_os("TEXINPUTS") {
+            if !existing.is_empty() {
+                paths.push(existing);
+            }
+        }
+        paths.push(OsString::new());
+        let texinputs = std::env::join_paths(paths).map_err(CompileError::InvalidAssetPath)?;
+        env.push((OsString::from("TEXINPUTS"), texinputs));
+    }
+
     Ok(CommandSpec {
         program: "latexmk".into(),
         args,
         working_dir,
-        env: Vec::new(),
+        env,
     })
 }
