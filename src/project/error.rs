@@ -30,4 +30,6 @@ pub enum ProjectError {
     InvalidProjectConfig(String),
     #[error(transparent)]
     TemplateManifest(#[from] crate::template::TemplateManifestError),
+    #[error(transparent)]
+    Snapshot(#[from] super::SnapshotError),
 }

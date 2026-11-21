@@ -3,6 +3,7 @@
 mod creation;
 mod discovery;
 mod error;
+mod snapshot;
 mod validation;
 
 use crate::config::{ConfigStore, ResolvedConfig};
@@ -12,6 +13,10 @@ use std::path::{Path, PathBuf};
 pub use creation::{create_project, initialize_project, set_template_version};
 pub use discovery::{DiscoveredDocument, discover_documents};
 pub use error::ProjectError;
+pub use snapshot::{
+    PROJECT_SNAPSHOT_FILE, ProjectSnapshot, ResourceRecord, ResourceState, SNAPSHOT_FORMAT_VERSION,
+    SnapshotError, fingerprint_bytes, key_path, path_key,
+};
 pub use validation::{ProjectValidation, ValidationIssue, ValidationSeverity, validate_project};
 
 /// A loaded LaTeX project and its effective configuration.
@@ -156,6 +161,11 @@ impl Project {
 
     pub fn documents(&self) -> Result<Vec<DiscoveredDocument>, ProjectError> {
         discover_documents(self)
+    }
+
+    /// Load this project's template snapshot, if it has one.
+    pub fn snapshot(&self) -> Result<Option<ProjectSnapshot>, SnapshotError> {
+        ProjectSnapshot::load_optional(&self.root)
     }
 
     pub fn validate(&self) -> ProjectValidation {

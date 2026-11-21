@@ -235,6 +235,16 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
                     .map(|path| path.display().to_string())
                     .unwrap_or_else(|| "(none)".into())
             );
+            match project.snapshot() {
+                Ok(Some(snapshot)) => println!(
+                    "Template snapshot: {} {} ({} resources)",
+                    snapshot.template,
+                    snapshot.template_version,
+                    snapshot.resources.len()
+                ),
+                Ok(None) => println!("Template snapshot: (none)"),
+                Err(error) => println!("Template snapshot: unreadable ({error})"),
+            }
             println!("Engine: {:?}", project.config().compiler.engine);
             println!(
                 "Template: {}",
@@ -315,6 +325,16 @@ fn execute_project_template(
                 .unwrap_or("latest");
             println!("Project: {}", project.root().display());
             println!("Template: {template}");
+            match project.snapshot() {
+                Ok(Some(snapshot)) => println!(
+                    "Snapshot: {} {} ({} resources)",
+                    snapshot.template,
+                    snapshot.template_version,
+                    snapshot.resources.len()
+                ),
+                Ok(None) => println!("Snapshot: (none)"),
+                Err(error) => println!("Snapshot: unreadable ({error})"),
+            }
             if policy == "latest" {
                 println!("Version policy: tracking latest stable release");
             } else {

@@ -1,6 +1,6 @@
 //! Safe project initialization and creation from installed templates.
 
-use super::{Project, ProjectError};
+use super::{PROJECT_SNAPSHOT_FILE, Project, ProjectError, ProjectSnapshot};
 use crate::config::ConfigStore;
 use crate::template::{TEMPLATE_MANIFEST_FILE, TemplateManifest};
 use std::fs;
@@ -123,9 +123,21 @@ pub fn create_project(
     })?;
 
     let result = (|| {
-        let shared_assets = template_shared_assets(&template_root)?;
-        copy_template(&template_root, &destination, shared_assets.as_deref())?;
-        initialize_project(&destination, store, Some(&selected_template))
+        let manifest = installed_template_manifest(&template_root)?;
+        let shared_assets = manifest
+            .as_ref()
+            .and_then(|manifest| manifest.shared_assets.as_deref());
+        let copied = copy_template(&template_root, &destination, shared_assets)?;
+        let project = initialize_project(&destination, store, Some(&selected_template))?;
+        if let Some(manifest) = &manifest {
+            let mut snapshot =
+                ProjectSnapshot::new(&manifest.name, &manifest.version, shared_assets)?;
+            for relative in &copied {
+                snapshot.record_file(project.root(), relative, relative)?;
+            }
+            snapshot.write(project.root())?;
+        }
+        Ok(project)
     })();
 
     if result.is_err() {
@@ -173,19 +185,21 @@ pub fn set_template_version(
     Project::load(project.root(), store)
 }
 
-fn template_shared_assets(template_root: &Path) -> Result<Option<PathBuf>, ProjectError> {
+fn installed_template_manifest(
+    template_root: &Path,
+) -> Result<Option<TemplateManifest>, ProjectError> {
     if !template_root.join(TEMPLATE_MANIFEST_FILE).is_file() {
         return Ok(None);
     }
-    let manifest = TemplateManifest::load(template_root)?;
-    Ok(manifest.shared_assets)
+    Ok(Some(TemplateManifest::load(template_root)?))
 }
 
 fn copy_template(
     source: &Path,
     destination: &Path,
     excluded: Option<&Path>,
-) -> Result<(), ProjectError> {
+) -> Result<Vec<PathBuf>, ProjectError> {
+    let mut copied = Vec::new();
     for entry in WalkDir::new(source).min_depth(1).sort_by_file_name() {
         let entry = entry?;
         let relative = entry
@@ -196,6 +210,10 @@ fn copy_template(
             .components()
             .any(|component| component == Component::Normal(std::ffi::OsStr::new(".git")))
         {
+            continue;
+        }
+        // Never propagate another project's snapshot into a new project.
+        if relative == Path::new(PROJECT_SNAPSHOT_FILE) {
             continue;
         }
         // Shared assets stay in the installed template and are exposed to
@@ -224,9 +242,10 @@ fn copy_template(
                 path: target,
                 source,
             })?;
+            copied.push(relative.to_path_buf());
         }
     }
-    Ok(())
+    Ok(copied)
 }
 
 fn read_document(path: &Path) -> Result<DocumentMut, ProjectError> {
@@ -356,6 +375,55 @@ mod tests {
         assert_eq!(
             project.asset_directories(),
             vec![project.assets_dir(), template.join("shared")]
+        );
+    }
+
+    #[test]
+    fn new_records_a_snapshot_of_template_resources() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config"));
+        let template = store.config_dir().join("templates/university");
+        fs::create_dir_all(template.join("src")).unwrap();
+        fs::create_dir_all(template.join("shared")).unwrap();
+        fs::write(
+            template.join("template.toml"),
+            "name = 'university'\nversion = '1.4.0'\nshared_assets = 'shared'\n",
+        )
+        .unwrap();
+        fs::write(template.join("src/main.tex"), "template document").unwrap();
+        fs::write(template.join("src/chapter.tex"), "chapter").unwrap();
+        fs::write(template.join("shared/branding.tex"), "shared asset").unwrap();
+        fs::write(
+            template.join(PROJECT_SNAPSHOT_FILE),
+            "format_version = 1\ntemplate = 'old'\ntemplate_version = '0.1.0'\n",
+        )
+        .unwrap();
+
+        let project = create_project("thesis", dir.path(), Some("university"), &store).unwrap();
+        let snapshot = project.snapshot().unwrap().expect("snapshot should exist");
+
+        assert_eq!(snapshot.template, "university");
+        assert_eq!(snapshot.template_version, "1.4.0");
+        assert_eq!(snapshot.shared_assets.as_deref(), Some("shared"));
+        assert!(snapshot.resources.contains_key("src/main.tex"));
+        assert!(snapshot.resources.contains_key("src/chapter.tex"));
+        assert!(snapshot.resources.contains_key("template.toml"));
+        assert!(!snapshot.resources.contains_key("shared/branding.tex"));
+        assert!(!snapshot.resources.contains_key(PROJECT_SNAPSHOT_FILE));
+        assert!(!project.root().join("shared").exists());
+        assert_eq!(
+            snapshot
+                .resource_state(project.root(), "src/main.tex")
+                .unwrap(),
+            Some(crate::project::ResourceState::Unchanged)
+        );
+
+        fs::write(project.root().join("src/main.tex"), "user edit").unwrap();
+        assert_eq!(
+            snapshot
+                .resource_state(project.root(), "src/main.tex")
+                .unwrap(),
+            Some(crate::project::ResourceState::Modified)
         );
     }
 
