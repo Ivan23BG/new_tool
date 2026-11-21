@@ -51,7 +51,7 @@ Available commands:
 new       Create a new project from an installed template
 init      Initialize latex_handler in an existing directory
 compile   Compile one or more LaTeX documents
-project   Inspect and validate a project (info, validate, list, template, sync)
+project   Inspect and validate a project (info, validate, list, pdfs, template, sync)
 template  Manage installed project templates
 config    Inspect and modify configuration
 clean     Remove generated build artifacts
@@ -260,6 +260,24 @@ even in dry-run mode.
 Clean only removes directories configured under the build/log/PDF settings, and
 refuses paths that would remove the project root, the source directory, or the
 assets directory.
+
+## Generated PDF management
+
+`latex_handler project pdfs [PATH]` lists the generated PDFs of a project and
+their build status.
+
+```sh
+latex_handler project pdfs ./thesis
+latex_handler project pdfs ./thesis --open src/main.tex
+```
+
+For every document/theme pair the listing reports the published PDF location,
+and whether the PDF is `up-to-date`, `outdated`, or `missing`.
+
+`--open <DOCUMENT>` resolves the document and opens its generated PDF with the
+platform default PDF viewer (for example `xdg-open` on Linux, `open` on macOS,
+or `explorer` on Windows). It reports an error when no PDF has been generated
+yet.
 
 ## Updating latex_handler
 

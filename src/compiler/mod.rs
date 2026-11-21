@@ -32,8 +32,8 @@ use std::{
 pub use batch::{BatchReport, DocumentResult, compile_documents, worker_count};
 pub use diagnostics::error_excerpt;
 pub use documents::{
-    CompileJob, ThemeSelection, compile_document, log_path_for, output_dir_for, output_stem,
-    pdf_path_for, plan_jobs, select_documents,
+    CompileJob, GeneratedPdf, PdfStatus, ThemeSelection, compile_document, generated_pdfs,
+    log_path_for, output_dir_for, output_stem, pdf_path_for, plan_jobs, select_documents,
 };
 pub use error::CompileError;
 pub use latexmk::{THEME_MACRO, engine_name, theme_name};

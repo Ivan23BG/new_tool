@@ -3,8 +3,9 @@ use super::args::{
     ProjectCommand, ProjectTemplateCommand, SyncArgs, TemplateCommand, Theme,
 };
 use crate::compiler::{
-    CompileOutcome, Compiler, DocumentResult, ThemeSelection, compile_documents, engine_name,
-    error_excerpt, plan_jobs, select_documents, worker_count,
+    CompileOutcome, Compiler, DocumentResult, PdfStatus, ThemeSelection, compile_documents,
+    engine_name, error_excerpt, generated_pdfs, pdf_path_for, plan_jobs, select_documents,
+    worker_count,
 };
 use crate::config::ThemeVariant;
 use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
@@ -17,7 +18,7 @@ use crate::template::{
     TemplateRegistry, install_template_with_dependencies, list_template_versions, remove_template,
     update_template,
 };
-use std::error::Error;
+use std::{error::Error, path::PathBuf};
 
 /// Dispatch parsed commands. Individual command implementations will be added
 /// in later stages; keeping dispatch centralized avoids putting application
@@ -344,6 +345,7 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
                 println!("{}", document.relative_path.display());
             }
         }
+        ProjectCommand::Pdfs { path, open } => execute_project_pdfs(path, open)?,
         ProjectCommand::Template { command } => execute_project_template(command, &store)?,
         ProjectCommand::Sync(args) => execute_project_sync(args, &store)?,
     }
@@ -527,6 +529,102 @@ fn execute_project_template(
 
 fn normalize_version(version: &str) -> &str {
     version.strip_prefix('v').unwrap_or(version)
+}
+
+fn execute_project_pdfs(
+    path: PathBuf,
+    open: Option<PathBuf>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = ConfigStore::user_default()?;
+    let project = Project::discover(&path, &store)?;
+    let documents = project.documents()?;
+
+    if let Some(document) = open {
+        let current = std::env::current_dir()?;
+        let selected = select_documents(&project, std::slice::from_ref(&document), &current)?;
+        let jobs = plan_jobs(&project, &selected, ThemeSelection::Default)?;
+        let job = jobs.into_iter().next().ok_or_else(|| {
+            std::io::Error::other(format!("no compile job for '{}'", document.display()))
+        })?;
+        let pdf = pdf_path_for(&project, &job);
+        if !pdf.is_file() {
+            return Err(std::io::Error::other(format!(
+                "no generated PDF for '{}' yet",
+                job.document.relative_path.display()
+            ))
+            .into());
+        }
+        open_pdf(&pdf)?;
+        println!(
+            "Opened {}",
+            pdf.strip_prefix(project.root()).unwrap_or(&pdf).display()
+        );
+        return Ok(());
+    }
+
+    let pdfs = generated_pdfs(&project, &documents);
+    if pdfs.is_empty() {
+        println!("No generated PDFs.");
+        return Ok(());
+    }
+    println!("Generated PDFs: {}", pdfs.len());
+    for pdf in &pdfs {
+        let relative = pdf.path.strip_prefix(project.root()).unwrap_or(&pdf.path);
+        println!(
+            "  {}  {}  {}",
+            relative.display(),
+            pdf.label(&project),
+            pdf.status.description()
+        );
+    }
+    let up_to_date = pdfs
+        .iter()
+        .filter(|pdf| pdf.status == PdfStatus::UpToDate)
+        .count();
+    let outdated = pdfs
+        .iter()
+        .filter(|pdf| pdf.status == PdfStatus::Outdated)
+        .count();
+    let missing = pdfs
+        .iter()
+        .filter(|pdf| pdf.status == PdfStatus::Missing)
+        .count();
+    println!(
+        "\n{} generated PDF(s): {} up-to-date, {} outdated, {} missing.",
+        pdfs.len(),
+        up_to_date,
+        outdated,
+        missing
+    );
+    Ok(())
+}
+
+/// Open a PDF with the platform default viewer.
+fn open_pdf(path: &std::path::Path) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let program = pdf_opener();
+    let status = std::process::Command::new(program)
+        .arg(path)
+        .status()
+        .map_err(|source| std::io::Error::other(format!("could not run '{program}': {source}")))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(
+            std::io::Error::other(format!("'{program}' failed to open '{}'", path.display()))
+                .into(),
+        )
+    }
+}
+
+/// The platform-default PDF viewer command, when one is available.
+fn pdf_opener() -> &'static str {
+    if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    }
 }
 
 fn execute_init(args: InitArgs) -> Result<(), Box<dyn Error + Send + Sync>> {

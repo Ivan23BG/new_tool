@@ -62,22 +62,15 @@ pub fn plan_jobs(
     documents: &[DiscoveredDocument],
     selection: ThemeSelection,
 ) -> Result<Vec<CompileJob>, CompileError> {
-    let themes = &project.config().themes;
-    let mut enabled: Vec<ThemeVariant> = Vec::new();
-    for theme in &themes.enabled {
-        if !enabled.contains(theme) {
-            enabled.push(*theme);
-        }
-    }
-
+    let enabled = enabled_themes(project);
     let chosen: Vec<Option<ThemeVariant>> = if enabled.is_empty() {
         match selection {
             ThemeSelection::Default => vec![None],
             _ => return Err(CompileError::ThemesDisabled),
         }
     } else {
-        let default_theme = if enabled.contains(&themes.default) {
-            themes.default
+        let default_theme = if enabled.contains(&project.config().themes.default) {
+            project.config().themes.default
         } else {
             enabled[0]
         };
@@ -109,6 +102,110 @@ pub fn plan_jobs(
             })
         })
         .collect())
+}
+
+/// Every compile job the project supports: each discovered document with every
+/// enabled theme, or the themes-off job when no theme is enabled.
+fn all_jobs(project: &Project, documents: &[DiscoveredDocument]) -> Vec<CompileJob> {
+    let enabled = enabled_themes(project);
+    let themes: Vec<Option<ThemeVariant>> = if enabled.is_empty() {
+        vec![None]
+    } else {
+        enabled.into_iter().map(|theme| Some(theme)).collect()
+    };
+    documents
+        .iter()
+        .flat_map(|document| {
+            themes.iter().map(move |theme| CompileJob {
+                document: document.clone(),
+                theme: *theme,
+            })
+        })
+        .collect()
+}
+
+/// Themes enabled in the project configuration, de-duplicated in order.
+fn enabled_themes(project: &Project) -> Vec<ThemeVariant> {
+    let themes = &project.config().themes;
+    let mut enabled: Vec<ThemeVariant> = Vec::new();
+    for theme in &themes.enabled {
+        if !enabled.contains(theme) {
+            enabled.push(*theme);
+        }
+    }
+    enabled
+}
+
+/// Outcome of comparing a generated PDF with its source document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PdfStatus {
+    /// The PDF exists and the source has not changed since it was built.
+    UpToDate,
+    /// The PDF is missing because no successful build published it.
+    Missing,
+    /// The source document changed after the last successful build.
+    Outdated,
+}
+
+impl PdfStatus {
+    /// Human-readable summary used by reports and the CLI.
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::UpToDate => "up-to-date",
+            Self::Missing => "missing",
+            Self::Outdated => "outdated",
+        }
+    }
+}
+
+/// A generated PDF together with the status of the build that produced it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedPdf {
+    /// The job that produced the PDF.
+    pub job: CompileJob,
+    /// Published location of the PDF.
+    pub path: PathBuf,
+    /// Build status of the PDF.
+    pub status: PdfStatus,
+}
+
+impl GeneratedPdf {
+    /// Human-readable label: the document path, tagged with its theme when
+    /// that is not the configured default.
+    pub fn label(&self, project: &Project) -> String {
+        self.job.label(project)
+    }
+}
+
+/// List the generated PDFs of a project: one entry per document/theme job,
+/// including entries whose PDF is missing.
+pub fn generated_pdfs(project: &Project, documents: &[DiscoveredDocument]) -> Vec<GeneratedPdf> {
+    all_jobs(project, documents)
+        .into_iter()
+        .map(|job| {
+            let path = pdf_path_for(project, &job);
+            let status = pdf_status(&job.document.path, &path);
+            GeneratedPdf { job, path, status }
+        })
+        .collect()
+}
+
+/// Classify a published PDF by comparing it with its source document.
+fn pdf_status(source: &Path, pdf: &Path) -> PdfStatus {
+    if !pdf.is_file() {
+        return PdfStatus::Missing;
+    }
+    let Ok(source_modified) = source.metadata().and_then(|metadata| metadata.modified()) else {
+        return PdfStatus::UpToDate;
+    };
+    let Ok(pdf_modified) = pdf.metadata().and_then(|metadata| metadata.modified()) else {
+        return PdfStatus::Missing;
+    };
+    if source_modified > pdf_modified {
+        PdfStatus::Outdated
+    } else {
+        PdfStatus::UpToDate
+    }
 }
 
 /// File-name stem of a job's published outputs: the document's stem, with
@@ -322,6 +419,51 @@ mod tests {
             .iter()
             .map(|d| d.relative_path.to_string_lossy().into_owned())
             .collect()
+    }
+
+    #[test]
+    fn generated_pdfs_reports_missing_up_to_date_and_outdated_pdfs() {
+        let (_dir, project) = sample_project("");
+        let job = CompileJob::new(doc(&project, "main.tex"));
+        let path = pdf_path_for(&project, &job);
+
+        // The PDF directory has no PDF yet: the entry is missing.
+        assert_eq!(pdf_status(&job.document.path, &path), PdfStatus::Missing);
+
+        // A PDF written after the source is up to date.
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"pdf").unwrap();
+        assert_eq!(pdf_status(&job.document.path, &path), PdfStatus::UpToDate);
+
+        // A source rewrite after the PDF makes it outdated.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(&job.document.path, b"new source").unwrap();
+        assert_eq!(pdf_status(&job.document.path, &path), PdfStatus::Outdated);
+    }
+
+    #[test]
+    fn generated_pdfs_lists_document_theme_pairs_with_status() {
+        let (_dir, project) =
+            sample_project("[themes]\nenabled = [\"light\", \"dark\"]\ndefault = \"light\"\n");
+        let documents = project.documents().unwrap();
+        let generated = generated_pdfs(&project, &documents);
+
+        let light = generated
+            .iter()
+            .find(|pdf| pdf.job.document.relative_path == PathBuf::from("main.tex"))
+            .unwrap();
+        assert_eq!(light.path, project.root().join("pdfs/main.pdf"));
+        assert_eq!(light.job.theme, Some(ThemeVariant::Light));
+        assert_eq!(light.status, PdfStatus::Missing);
+
+        let dark = generated
+            .iter()
+            .find(|pdf| {
+                pdf.job.theme == Some(ThemeVariant::Dark)
+                    && pdf.job.document.relative_path == PathBuf::from("main.tex")
+            })
+            .unwrap();
+        assert_eq!(dark.path, project.root().join("pdfs/main-dark.pdf"));
     }
 
     #[test]

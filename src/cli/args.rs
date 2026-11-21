@@ -155,6 +155,18 @@ pub enum ProjectCommand {
         path: PathBuf,
     },
 
+    /// List generated PDFs and their build status.
+    Pdfs {
+        /// Project directory. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+
+        /// Document whose PDF should be opened, as a path relative to the
+        /// project or source directory.
+        #[arg(long, value_name = "DOCUMENT")]
+        open: Option<PathBuf>,
+    },
+
     /// Inspect or change the template version policy for a project.
     Template {
         #[command(subcommand)]
@@ -463,6 +475,27 @@ mod tests {
                 })
             } if path == std::path::Path::new("./thesis")
         ));
+    }
+
+    #[test]
+    fn parses_project_pdfs_with_open() {
+        let cli = Cli::try_parse_from([
+            "latex_handler",
+            "project",
+            "pdfs",
+            "./thesis",
+            "--open",
+            "src/main.tex",
+        ])
+        .expect("project pdfs arguments should parse");
+        let super::Command::Project {
+            command: super::ProjectCommand::Pdfs { path, open },
+        } = cli.command
+        else {
+            panic!("expected the project pdfs command");
+        };
+        assert_eq!(path, PathBuf::from("./thesis"));
+        assert_eq!(open, Some(PathBuf::from("src/main.tex")));
     }
 
     #[test]
