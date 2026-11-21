@@ -17,21 +17,56 @@ Implemented features:
 - Template installation, update, status, and version listing.
 - Configuration management and project structure validation.
 - `latex_handler clean` for generated build outputs.
-- Self-update of the binary is **not** implemented; `latex_handler update` is
-  an alias that updates installed templates to their latest stable versions.
+- `latex_handler self-update` for binary updates from published releases.
 
 ## Requirements
 
-- Rust stable (edition 2024)
+- Rust stable (edition 2024) to build from source
 - A LaTeX distribution and `latexmk` for document compilation
 - Git for template installation and updates
+
 ## Install and build
 
+### From a release
+
+Prebuilt binaries are published on GitHub Releases for Linux and Windows.
+
+Linux:
+
 ```sh
-cargo build
+curl -sSL https://github.com/Ivan23BG/latex_handler/releases/latest/download/latex_handler-linux.tar.gz | tar -xz -C "$HOME/.local/bin" latex_handler
+chmod +x "$HOME/.local/bin/latex_handler"
+```
+
+Windows (PowerShell):
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/Ivan23BG/latex_handler/releases/latest/download/latex_handler-windows.zip -OutFile "$env:TEMP/latex_handler-windows.zip"
+Expand-Archive -Path "$env:TEMP/latex_handler-windows.zip" -DestinationPath "$env:LOCALAPPDATA\latex_handler\bin" -Force
+```
+
+Alternatively, use the provided install scripts:
+
+```sh
+curl -sSL https://raw.githubusercontent.com/Ivan23BG/latex_handler/main/install.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/Ivan23BG/latex_handler/main/install.ps1 | iex
+```
+
+### From source
+
+```sh
+git clone https://github.com/Ivan23BG/latex_handler.git
+cd latex_handler
+cargo build --locked
 ```
 
 The resulting binary is `target/debug/latex_handler`.
+
+For most users, the release binaries or install scripts are the simplest path;
+building from source is useful for development.
 
 ## CLI overview
 
