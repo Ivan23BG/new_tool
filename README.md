@@ -51,7 +51,7 @@ Available commands:
 new       Create a new project from an installed template
 init      Initialize latex_handler in an existing directory
 compile   Compile one or more LaTeX documents
-project   Inspect and validate a project (info, validate, list, pdfs, template, sync)
+project   Inspect and validate a project (info, validate, status, list, pdfs, template, sync)
 template  Manage installed project templates
 config    Inspect and modify configuration
 clean     Remove generated build artifacts
@@ -278,6 +278,23 @@ and whether the PDF is `up-to-date`, `outdated`, or `missing`.
 platform default PDF viewer (for example `xdg-open` on Linux, `open` on macOS,
 or `explorer` on Windows). It reports an error when no PDF has been generated
 yet.
+
+## Project status and maintenance
+
+`latex_handler project status [PATH]` summarizes the maintenance state of a
+project.
+
+```sh
+latex_handler project status ./thesis
+```
+
+The report includes:
+
+- the number of discovered documents,
+- the generated PDFs and their build status (up-to-date, outdated, or missing),
+- the size of the generated files under the configured build, log, and PDF
+  directories,
+- a clean preview listing what a default clean would remove.
 
 ## Updating latex_handler
 

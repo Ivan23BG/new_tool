@@ -155,6 +155,13 @@ pub enum ProjectCommand {
         path: PathBuf,
     },
 
+    /// Summarize build status and maintenance information.
+    Status {
+        /// Project directory. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+
     /// List generated PDFs and their build status.
     Pdfs {
         /// Project directory. Defaults to the current directory.
@@ -475,6 +482,19 @@ mod tests {
                 })
             } if path == std::path::Path::new("./thesis")
         ));
+    }
+
+    #[test]
+    fn parses_project_status() {
+        let cli = Cli::try_parse_from(["latex_handler", "project", "status", "./thesis"])
+            .expect("project status arguments should parse");
+        let super::Command::Project {
+            command: super::ProjectCommand::Status { path },
+        } = cli.command
+        else {
+            panic!("expected the project status command");
+        };
+        assert_eq!(path, PathBuf::from("./thesis"));
     }
 
     #[test]

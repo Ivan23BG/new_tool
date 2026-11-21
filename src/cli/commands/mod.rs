@@ -11,8 +11,8 @@ use crate::config::ThemeVariant;
 use crate::config::{CompilerConfig, Config, ConfigManager, ConfigScope, ConfigStore};
 use crate::project::{
     CleanSelection, ConflictPolicy, KeepReason, Project, SyncAction, ValidationSeverity,
-    apply_sync, clean_project, create_project, initialize_project, plan_clean, plan_sync,
-    set_template_version,
+    apply_sync, clean_project, create_project, directory_bytes, initialize_project, plan_clean,
+    plan_sync, set_template_version,
 };
 use crate::template::{
     TemplateRegistry, install_template_with_dependencies, list_template_versions, remove_template,
@@ -345,6 +345,7 @@ fn execute_project(command: ProjectCommand) -> Result<(), Box<dyn Error + Send +
                 println!("{}", document.relative_path.display());
             }
         }
+        ProjectCommand::Status { path } => execute_project_status(path)?,
         ProjectCommand::Pdfs { path, open } => execute_project_pdfs(path, open)?,
         ProjectCommand::Template { command } => execute_project_template(command, &store)?,
         ProjectCommand::Sync(args) => execute_project_sync(args, &store)?,
@@ -625,6 +626,55 @@ fn pdf_opener() -> &'static str {
     } else {
         "xdg-open"
     }
+}
+
+fn execute_project_status(path: PathBuf) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let store = ConfigStore::user_default()?;
+    let project = Project::discover(&path, &store)?;
+    let documents = project.documents()?;
+    let pdfs = generated_pdfs(&project, &documents);
+
+    let up_to_date = pdfs
+        .iter()
+        .filter(|pdf| pdf.status == PdfStatus::UpToDate)
+        .count();
+    let outdated = pdfs
+        .iter()
+        .filter(|pdf| pdf.status == PdfStatus::Outdated)
+        .count();
+    let missing = pdfs
+        .iter()
+        .filter(|pdf| pdf.status == PdfStatus::Missing)
+        .count();
+
+    println!("Project: {}", project.root().display());
+    println!("Documents: {}", documents.len());
+    println!("Generated PDFs: {}", pdfs.len());
+    println!(
+        "Build status: {up_to_date} up-to-date, {outdated} outdated, {missing} missing PDF(s)."
+    );
+
+    println!("\nGenerated files:");
+    for (label, directory) in [
+        ("build", project.config().structure.build.clone()),
+        ("logs", project.config().structure.logs.clone()),
+        ("PDF", project.config().structure.pdf.clone()),
+    ] {
+        if let Some(bytes) = directory_bytes(&project.root().join(&directory)) {
+            println!("  {label}: {bytes} byte(s)");
+        }
+    }
+
+    println!("\nClean preview:");
+    let planned = plan_clean(&project, CleanSelection::default())?;
+    if planned.is_empty() {
+        println!("  Nothing to clean.");
+    }
+    for path in planned {
+        let relative = path.strip_prefix(project.root()).unwrap_or(&path);
+        println!("  Would remove {}", relative.display());
+    }
+    Ok(())
 }
 
 fn execute_init(args: InitArgs) -> Result<(), Box<dyn Error + Send + Sync>> {

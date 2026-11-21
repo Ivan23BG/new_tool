@@ -5,6 +5,7 @@ mod creation;
 mod discovery;
 mod error;
 mod snapshot;
+mod status;
 mod sync;
 mod validation;
 
@@ -20,6 +21,7 @@ pub use snapshot::{
     PROJECT_SNAPSHOT_FILE, ProjectSnapshot, ResourceRecord, ResourceState, SNAPSHOT_FORMAT_VERSION,
     SnapshotError, fingerprint_bytes, key_path, path_key,
 };
+pub use status::directory_bytes;
 pub use sync::{
     ConflictKind, ConflictPolicy, KeepReason, SyncAction, SyncCounts, SyncError, SyncOutcome,
     SyncPlan, apply_sync, plan_sync,
