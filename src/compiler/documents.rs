@@ -76,8 +76,13 @@ pub fn plan_jobs(
             _ => return Err(CompileError::ThemesDisabled),
         }
     } else {
+        let default_theme = if enabled.contains(&themes.default) {
+            themes.default
+        } else {
+            enabled[0]
+        };
         match selection {
-            ThemeSelection::Default => vec![Some(themes.default)],
+            ThemeSelection::Default => vec![Some(default_theme)],
             ThemeSelection::All => enabled.iter().copied().map(Some).collect(),
             ThemeSelection::Only(theme) => {
                 if !enabled.contains(&theme) {
@@ -317,6 +322,20 @@ mod tests {
             .iter()
             .map(|d| d.relative_path.to_string_lossy().into_owned())
             .collect()
+    }
+
+    #[test]
+    fn default_theme_falls_back_to_the_first_enabled_theme() {
+        let (_dir, project) =
+            sample_project("[themes]\nenabled = [\"dark\"]\ndefault = \"light\"\n");
+        let jobs = plan_jobs(
+            &project,
+            &[doc(&project, "main.tex")],
+            ThemeSelection::Default,
+        )
+        .unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].theme, Some(ThemeVariant::Dark));
     }
 
     #[test]

@@ -38,7 +38,7 @@ if ($UserPath -notlike "*$InstallDir*") {
     $env:PATH += ";$InstallDir"
 }
 
-Write-Host "Running initial setup to fetch LaTeX templates..." -ForegroundColor Cyan
+Write-Host "Updating installed templates..." -ForegroundColor Cyan
 & "$ExePath" update
 
 Write-Host "Installation complete! Please restart your terminal to use 'latex_handler' globally." -ForegroundColor Green
